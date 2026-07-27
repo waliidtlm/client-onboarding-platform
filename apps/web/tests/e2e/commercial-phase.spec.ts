@@ -1,12 +1,16 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 
-const demoPassword = process.env.DEMO_STAFF_PASSWORD ?? "Local-demo-only-password-2026";
+const testStaffPassword = (() => {
+  const value = process.env.TEST_STAFF_PASSWORD;
+  if (!value) throw new Error("TEST_STAFF_PASSWORD is required");
+  return value;
+})();
 let correctedOnboardingPath = "";
 
 async function signIn(page: Page, email: string) {
   await page.goto("/signin");
   await page.getByLabel("Staff email").fill(email);
-  await page.getByLabel("Password").fill(demoPassword);
+  await page.getByLabel("Password").fill(testStaffPassword);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 }

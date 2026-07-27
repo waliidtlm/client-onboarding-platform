@@ -64,6 +64,10 @@ Copy-Item .env.example .env
 `.env.example` is documentation only. Docker Compose commands use `.env`. Never commit `.env`,
 and replace every development-only value before using this setup outside a local machine.
 
+The [security hardening checkpoint](docs/security-hardening.md) documents dependency remediation,
+CI policy, local credential separation, and requirements that must be completed before internet
+deployment.
+
 Add the Phase 1 variables from `.env.example` to an older Phase 0 `.env`. In particular, configure:
 
 - migration, test, and shadow database names/users/passwords;

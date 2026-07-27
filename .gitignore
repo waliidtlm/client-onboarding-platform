@@ -23,6 +23,7 @@ pnpm-debug.log*
 
 # Local learning journal (never commit)
 docs/phase-learning-notes.local.md
+docs/security-audit.local.json
 
 # Editors and operating systems
 .idea/

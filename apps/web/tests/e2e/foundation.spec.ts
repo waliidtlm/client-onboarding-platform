@@ -16,3 +16,12 @@ test("exposes a process health endpoint", async ({ request }) => {
     service: "client-onboarding-web",
   });
 });
+
+test("adds baseline security headers", async ({ request }) => {
+  const response = await request.get("/signin");
+
+  expect(response.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(response.headers()["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  expect(response.headers()["permissions-policy"]).toContain("camera=()");
+  expect(response.headers()["x-frame-options"]).toBe("DENY");
+});

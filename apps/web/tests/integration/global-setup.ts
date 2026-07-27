@@ -13,6 +13,14 @@ function requireDatabase(value: string | undefined, expected: string, label: str
   return value;
 }
 
+function quotedDatabaseRole(connectionString: string, label: string): string {
+  const role = decodeURIComponent(new URL(connectionString).username);
+  if (!/^[a-z_][a-z0-9_]*$/.test(role)) {
+    throw new Error(`${label} must contain a safe PostgreSQL role`);
+  }
+  return `"${role}"`;
+}
+
 export async function prepareIntegrationDatabase(): Promise<void> {
   const testRuntimeUrl = requireDatabase(
     process.env.TEST_DATABASE_URL,
@@ -29,6 +37,7 @@ export async function prepareIntegrationDatabase(): Promise<void> {
   if (testRuntimeUrl === testMigrationUrl) {
     throw new Error("Test runtime and migration credentials must be different");
   }
+  const testRuntimeRole = quotedDatabaseRole(testRuntimeUrl, "TEST_DATABASE_URL");
   const testStaffPassword = process.env.TEST_STAFF_PASSWORD;
   if (!testStaffPassword) {
     throw new Error("TEST_STAFF_PASSWORD is required for isolated integration data");
@@ -56,15 +65,15 @@ export async function prepareIntegrationDatabase(): Promise<void> {
 
   try {
     await seedDatabase(client, testStaffPassword);
-    await client.$executeRawUnsafe('GRANT USAGE ON SCHEMA public TO "onboarding_test_user"');
+    await client.$executeRawUnsafe(`GRANT USAGE ON SCHEMA public TO ${testRuntimeRole}`);
     await client.$executeRawUnsafe(
-      'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "onboarding_test_user"',
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${testRuntimeRole}`,
     );
     await client.$executeRawUnsafe(
-      'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "onboarding_test_user"',
+      `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${testRuntimeRole}`,
     );
     await client.$executeRawUnsafe(
-      'REVOKE UPDATE, DELETE ON TABLE "AuditEvent" FROM "onboarding_test_user"',
+      `REVOKE UPDATE, DELETE ON TABLE "AuditEvent" FROM ${testRuntimeRole}`,
     );
   } finally {
     await client.$disconnect();

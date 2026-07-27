@@ -31,6 +31,7 @@
     "test": "pnpm --filter @client-onboarding/web test",
     "test:e2e": "pnpm --filter @client-onboarding/web test:e2e",
     "test:integration": "pnpm --filter @client-onboarding/web test:integration",
+    "pretypecheck": "pnpm db:generate",
     "typecheck": "pnpm --filter @client-onboarding/web typecheck",
     "verify": "pnpm db:validate && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm secret:scan"
   },

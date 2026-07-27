@@ -1,0 +1,32 @@
+{
+  "name": "client-onboarding-platform",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.9.0",
+  "engines": {
+    "node": ">=24.16.0",
+    "pnpm": ">=11.9.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @client-onboarding/web build",
+    "ci": "pnpm verify",
+    "dev": "pnpm --filter @client-onboarding/web dev",
+    "docker:config": "docker compose --env-file .env config",
+    "docker:down": "docker compose --env-file .env down",
+    "docker:logs": "docker compose --env-file .env logs --follow",
+    "docker:up": "docker compose --env-file .env up --build -d",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "pnpm --filter @client-onboarding/web lint",
+    "secret:scan": "secretlint \"**/*\" \".env.example\"",
+    "test": "pnpm --filter @client-onboarding/web test",
+    "test:e2e": "pnpm --filter @client-onboarding/web test:e2e",
+    "typecheck": "pnpm --filter @client-onboarding/web typecheck",
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e && pnpm build && pnpm secret:scan"
+  },
+  "devDependencies": {
+    "@secretlint/secretlint-rule-preset-recommend": "13.0.4",
+    "prettier": "3.9.6",
+    "secretlint": "13.0.4"
+  }
+}

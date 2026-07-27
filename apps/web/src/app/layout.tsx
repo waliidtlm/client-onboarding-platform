@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Client Onboarding Platform",
-  description: "Production-minded client onboarding foundation",
+  title: "Northstar Client Onboarding",
+  description: "Trusted staff access to authoritative onboarding records",
 };
 
 type RootLayoutProps = Readonly<{

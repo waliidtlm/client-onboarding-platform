@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-test("shows the Phase 0 foundation page", async ({ page }) => {
-  await page.goto("/");
+test("redirects an unauthenticated staff member to sign in", async ({ page }) => {
+  await page.goto("/dashboard");
 
-  await expect(page.getByRole("heading", { name: "Client Onboarding Platform" })).toBeVisible();
-  await expect(page.getByText("Phase 0 · Project Foundation")).toBeVisible();
+  await expect(page).toHaveURL(/\/signin\?callbackUrl=%2Fdashboard/);
+  await expect(page.getByRole("heading", { name: "Staff sign in" })).toBeVisible();
 });
 
 test("exposes a process health endpoint", async ({ request }) => {

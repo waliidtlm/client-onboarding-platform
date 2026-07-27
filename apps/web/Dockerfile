@@ -21,8 +21,19 @@ COPY --from=dependencies /app/apps/web/node_modules ./apps/web/node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
+# Prisma generate validates the datasource URL but does not connect to it.
+# These non-secret placeholders exist only in the discarded build stage.
+ENV DATABASE_URL="postgresql://build-only@127.0.0.1:5432/onboarding_app"
+ENV AUTH_SECRET="build-only-placeholder-not-used-at-runtime"
+ENV NEXTAUTH_URL="http://127.0.0.1:3000"
 
 RUN pnpm --filter @client-onboarding/web build
+
+FROM dependencies AS migrator
+
+COPY . .
+
+CMD ["pnpm", "db:deploy"]
 
 FROM node:24.16.0-alpine3.23 AS runner
 

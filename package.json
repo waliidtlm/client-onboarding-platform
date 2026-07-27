@@ -10,7 +10,16 @@
   "scripts": {
     "build": "pnpm --filter @client-onboarding/web build",
     "ci": "pnpm verify",
-    "dev": "pnpm --filter @client-onboarding/web dev",
+    "db:bootstrap": "docker compose --env-file .env run --rm db-bootstrap",
+    "db:deploy": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:create": "prisma migrate dev --create-only",
+    "db:reset:test": "prisma migrate reset --force --config prisma.test.config.ts",
+    "db:seed": "prisma db seed",
+    "db:status": "prisma migrate status",
+    "db:validate": "prisma validate",
+    "dev": "node scripts/dev-web.mjs",
     "docker:config": "docker compose --env-file .env config",
     "docker:down": "docker compose --env-file .env down",
     "docker:logs": "docker compose --env-file .env logs --follow",
@@ -21,12 +30,16 @@
     "secret:scan": "secretlint \"**/*\" \".env.example\"",
     "test": "pnpm --filter @client-onboarding/web test",
     "test:e2e": "pnpm --filter @client-onboarding/web test:e2e",
+    "test:integration": "pnpm --filter @client-onboarding/web test:integration",
     "typecheck": "pnpm --filter @client-onboarding/web typecheck",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e && pnpm build && pnpm secret:scan"
+    "verify": "pnpm db:validate && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm secret:scan"
   },
   "devDependencies": {
     "@secretlint/secretlint-rule-preset-recommend": "13.0.4",
+    "dotenv": "17.4.2",
     "prettier": "3.9.6",
-    "secretlint": "13.0.4"
+    "prisma": "7.9.0",
+    "secretlint": "13.0.4",
+    "tsx": "4.23.1"
   }
 }

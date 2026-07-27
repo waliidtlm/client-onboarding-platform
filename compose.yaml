@@ -11,6 +11,12 @@ services:
       APP_DB_NAME: ${APP_DB_NAME}
       APP_DB_USER: ${APP_DB_USER}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      MIGRATION_DB_USER: ${MIGRATION_DB_USER}
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD}
+      TEST_DB_NAME: ${TEST_DB_NAME}
+      TEST_DB_USER: ${TEST_DB_USER}
+      TEST_DB_PASSWORD: ${TEST_DB_PASSWORD}
+      SHADOW_DB_NAME: ${SHADOW_DB_NAME}
       N8N_DB_NAME: ${N8N_DB_NAME}
       N8N_DB_USER: ${N8N_DB_USER}
       N8N_DB_PASSWORD: ${N8N_DB_PASSWORD}
@@ -19,12 +25,52 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./docker/postgres/init/01-create-databases.sh:/docker-entrypoint-initdb.d/01-create-databases.sh:ro
+      - ./docker/postgres/init/02-phase1-databases.sh:/docker-entrypoint-initdb.d/02-phase1-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", 'pg_isready --username "$${POSTGRES_USER}" --dbname "$${POSTGRES_DB}"']
       interval: 5s
       timeout: 5s
       retries: 12
       start_period: 10s
+
+  db-bootstrap:
+    image: postgres:18.4-alpine3.24
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_DB: postgres
+      APP_DB_NAME: ${APP_DB_NAME}
+      APP_DB_USER: ${APP_DB_USER}
+      MIGRATION_DB_USER: ${MIGRATION_DB_USER}
+      MIGRATION_DB_PASSWORD: ${MIGRATION_DB_PASSWORD}
+      TEST_DB_NAME: ${TEST_DB_NAME}
+      TEST_DB_USER: ${TEST_DB_USER}
+      TEST_DB_PASSWORD: ${TEST_DB_PASSWORD}
+      SHADOW_DB_NAME: ${SHADOW_DB_NAME}
+      N8N_DB_NAME: ${N8N_DB_NAME}
+      N8N_DB_USER: ${N8N_DB_USER}
+    volumes:
+      - ./docker/postgres/init/02-phase1-databases.sh:/bootstrap/02-phase1-databases.sh:ro
+    command: ["sh", "/bootstrap/02-phase1-databases.sh"]
+    restart: "no"
+
+  migrate:
+    image: client-onboarding-platform-migrate:0.1.0
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: migrator
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${MIGRATION_DB_USER}:${MIGRATION_DB_PASSWORD}@postgres:5432/${APP_DB_NAME}
+    restart: "no"
 
   n8n:
     image: docker.n8n.io/n8nio/n8n:2.32.5
@@ -71,10 +117,12 @@ services:
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://${APP_DB_USER}:${APP_DB_PASSWORD}@postgres:5432/${APP_DB_NAME}
+      AUTH_SECRET: ${AUTH_SECRET}
+      NEXTAUTH_URL: http://127.0.0.1:${WEB_PORT:-3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"

@@ -1,29 +1,32 @@
-import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
 
+import { PrismaClient } from "@/generated/prisma/client";
 import { getServerEnvironment } from "@/lib/env";
 
-let pool: Pool | undefined;
+type PrismaGlobal = typeof globalThis & {
+  prismaClient?: PrismaClient;
+};
 
-function getPool(): Pool {
-  if (!pool) {
-    const environment = getServerEnvironment();
-
-    pool = new Pool({
-      connectionString: environment.DATABASE_URL,
+export function createPrismaClient(connectionString: string): PrismaClient {
+  return new PrismaClient({
+    adapter: new PrismaPg({
+      connectionString,
       connectionTimeoutMillis: 3_000,
       idleTimeoutMillis: 30_000,
       max: 5,
-    });
+    }),
+  });
+}
 
-    pool.on("error", () => {
-      // Individual request failures are logged by the readiness endpoint.
-      // Avoid logging the pg Error object because it can include connection details.
-    });
-  }
+const prismaGlobal = globalThis as PrismaGlobal;
 
-  return pool;
+export const prisma =
+  prismaGlobal.prismaClient ?? createPrismaClient(getServerEnvironment().DATABASE_URL);
+
+if (process.env.NODE_ENV !== "production") {
+  prismaGlobal.prismaClient = prisma;
 }
 
 export async function checkDatabaseConnection(): Promise<void> {
-  await getPool().query("SELECT 1");
+  await prisma.$queryRaw`SELECT 1`;
 }

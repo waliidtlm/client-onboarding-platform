@@ -59,6 +59,9 @@ export async function prepareIntegrationDatabase(): Promise<void> {
     await client.$executeRawUnsafe(
       'GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO "onboarding_test_user"',
     );
+    await client.$executeRawUnsafe(
+      'REVOKE UPDATE, DELETE ON TABLE "AuditEvent" FROM "onboarding_test_user"',
+    );
   } finally {
     await client.$disconnect();
   }

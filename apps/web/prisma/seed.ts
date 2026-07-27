@@ -7,6 +7,8 @@ import { z } from "zod";
 import {
   ActivationRequirementStatus,
   ActivationType,
+  AuditActorType,
+  CommercialGateBlocker,
   CommercialGateStatus,
   ContractStatus,
   DealStatus,
@@ -179,31 +181,21 @@ export async function seedDatabase(
         dealStatus: DealStatus.CLOSED_WON,
         salesHandoffStatus: SalesHandoffStatus.COMPLETE,
         commercialGateStatus: CommercialGateStatus.BLOCKED,
+        commercialGateBlockingReasons: [CommercialGateBlocker.ACTIVATION_AMOUNT_NOT_SATISFIED],
+        commercialGateEvaluatedAt: new Date("2026-07-22T14:30:00.000Z"),
         status: OnboardingStatus.COMMERCIAL_PENDING,
         projectManagerId: null,
         submittedById: salesUser.id,
         validatedById: operationsUser.id,
         invoiceTotal: "10000.0000",
         currency: "USD",
+        servicePackageNameSnapshot: servicePackage.name,
+        activationTypeSnapshot: ActivationType.DEPOSIT_PERCENTAGE,
+        activationValueSnapshot: "30.0000",
         activationRequiredAmount: "3000.0000",
         activationRequirementStatus: ActivationRequirementStatus.NOT_SATISFIED,
       },
-      update: {
-        clientId: clientRecord.id,
-        servicePackageId: servicePackage.id,
-        dealStatus: DealStatus.CLOSED_WON,
-        salesHandoffStatus: SalesHandoffStatus.COMPLETE,
-        commercialGateStatus: CommercialGateStatus.BLOCKED,
-        status: OnboardingStatus.COMMERCIAL_PENDING,
-        projectManagerId: null,
-        submittedById: salesUser.id,
-        validatedById: operationsUser.id,
-        invoiceTotal: "10000.0000",
-        currency: "USD",
-        activationRequiredAmount: "3000.0000",
-        activationRequirementStatus: ActivationRequirementStatus.NOT_SATISFIED,
-        activatedAt: null,
-      },
+      update: {},
     });
 
     await tx.contract.upsert({
@@ -220,11 +212,7 @@ export async function seedDatabase(
         signedAt: new Date("2026-07-20T10:00:00.000Z"),
         externalReference: "CONTRACT-ATLAS-001",
       },
-      update: {
-        status: ContractStatus.SIGNED,
-        signedAt: new Date("2026-07-20T10:00:00.000Z"),
-        externalReference: "CONTRACT-ATLAS-001",
-      },
+      update: {},
     });
 
     const invoice = await tx.invoice.upsert({
@@ -238,14 +226,12 @@ export async function seedDatabase(
         dueAt: new Date("2026-08-15T23:59:59.000Z"),
         externalReference: "INVOICE-ATLAS-001",
       },
-      update: {
-        onboardingId: onboarding.id,
-        status: InvoiceStatus.PARTIALLY_PAID,
-        totalAmount: "10000.0000",
-        currency: "USD",
-        dueAt: new Date("2026-08-15T23:59:59.000Z"),
-        externalReference: "INVOICE-ATLAS-001",
-      },
+      update: {},
+    });
+
+    await tx.onboarding.updateMany({
+      where: { id: onboarding.id, activationInvoiceId: null },
+      data: { activationInvoiceId: invoice.id },
     });
 
     await tx.payment.upsert({
@@ -260,29 +246,53 @@ export async function seedDatabase(
         verifiedById: financeUser.id,
         verifiedAt: new Date("2026-07-22T14:30:00.000Z"),
         externalReference: "PAYMENT-ATLAS-001",
+        recordingKey: "SEED:PAYMENT-ATLAS-001",
       },
-      update: {
-        invoiceId: invoice.id,
-        verifiedAmount: "2000.0000",
+      update: {},
+    });
+
+    await tx.salesHandoff.upsert({
+      where: { onboardingId: onboarding.id },
+      create: {
+        onboardingId: onboarding.id,
+        submissionKey: "SEED:HANDOFF-ATLAS-001",
+        externalDealId: "DEAL-ATLAS-2026-001",
+        clientMode: "EXISTING",
+        existingClientId: clientRecord.id,
+        servicePackageId: servicePackage.id,
+        dealStatus: DealStatus.CLOSED_WON,
+        agreedTotal: "10000.0000",
         currency: "USD",
-        verificationStatus: PaymentVerificationStatus.VERIFIED,
-        submittedById: financeUser.id,
-        verifiedById: financeUser.id,
-        verifiedAt: new Date("2026-07-22T14:30:00.000Z"),
+        salesNotes: "Existing Phase 1 Atlas Fitness Studio demonstration.",
       },
+      update: {},
     });
 
-    const seededOnboarding = await tx.onboarding.findUniqueOrThrow({
-      where: { id: onboarding.id },
-      select: { commercialGateStatus: true, status: true, activatedAt: true },
+    const baselineAudit = await tx.auditEvent.findFirst({
+      where: {
+        onboardingId: onboarding.id,
+        action: "PHASE_2_BASELINE_CREATED",
+      },
+      select: { id: true },
     });
 
-    if (
-      seededOnboarding.commercialGateStatus !== CommercialGateStatus.BLOCKED ||
-      seededOnboarding.status !== OnboardingStatus.COMMERCIAL_PENDING ||
-      seededOnboarding.activatedAt !== null
-    ) {
-      throw new Error("Phase 1 seed attempted to create a premature activated onboarding");
+    if (!baselineAudit) {
+      await tx.auditEvent.create({
+        data: {
+          onboardingId: onboarding.id,
+          actorType: AuditActorType.SYSTEM,
+          action: "PHASE_2_BASELINE_CREATED",
+          entityType: "ONBOARDING",
+          entityId: onboarding.id,
+          newValue: {
+            status: OnboardingStatus.COMMERCIAL_PENDING,
+            commercialGateStatus: CommercialGateStatus.BLOCKED,
+            activationRequirementStatus: ActivationRequirementStatus.NOT_SATISFIED,
+          },
+          metadata: { source: "DEMO_SEED" },
+          correlationId: "00000000-0000-4000-8000-000000000201",
+        },
+      });
     }
 
     const [
@@ -295,6 +305,8 @@ export async function seedDatabase(
       contractCount,
       invoiceCount,
       paymentCount,
+      salesHandoffCount,
+      auditEventCount,
     ] = await Promise.all([
       tx.user.count(),
       tx.client.count(),
@@ -305,6 +317,8 @@ export async function seedDatabase(
       tx.contract.count(),
       tx.invoice.count(),
       tx.payment.count(),
+      tx.salesHandoff.count(),
+      tx.auditEvent.count(),
     ]);
 
     return {
@@ -317,6 +331,8 @@ export async function seedDatabase(
       contracts: contractCount,
       invoices: invoiceCount,
       payments: paymentCount,
+      salesHandoffs: salesHandoffCount,
+      auditEvents: auditEventCount,
     };
   });
 }

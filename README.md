@@ -2,9 +2,10 @@
 
 Production-minded internal client onboarding platform supported by n8n.
 
-Phase 1 adds trusted staff access and the authoritative client, package, onboarding, contract,
-invoice, and payment records. It remains read-only: Commercial Gate calculations, state
-transitions, provisioning, client submissions, audit events, and n8n workflows begin later.
+Phase 2 adds the application-owned commercial workflow: structured Sales handoff, contract
+versioning, Finance-owned invoice issuance, payment verification, deterministic Commercial Gate,
+exactly-once onboarding activation, and an append-only audit timeline. n8n and external
+automation remain deferred to Phase 3.
 
 ## Phase 1 behavior
 
@@ -15,6 +16,20 @@ transitions, provisioning, client submissions, audit events, and n8n workflows b
 - Delivery cannot read commercial records; those rows are not queried for Delivery requests.
 - Credentials use encrypted JWT sessions. Auth.js database session tables are intentionally absent.
 - Login throttling, password recovery, MFA, and production SSO remain production improvements.
+
+## Phase 2 behavior
+
+- Sales creates an inactive onboarding even when the structured handoff is incomplete.
+- A handoff can select an existing client or create a new client during validation.
+- Validated commercial terms and package activation policy are snapshotted onto the onboarding.
+- Operations controls contract status; a signed version is never rewritten by a later revision.
+- Finance issues the draft activation invoice, records payments, and makes terminal review
+  decisions.
+- The pure Commercial Gate returns an explicit status, ordered blockers, and evaluation time.
+- Gate approval and activation of the existing onboarding occur in one transaction.
+- The onboarding activation timestamp and activation audit event are created at most once.
+- Important Phase 2 mutations write whitelisted, append-only AuditEvent records.
+- Delivery cannot read commercial records, audit details, or mutation controls.
 
 ## Architecture boundary
 
@@ -195,8 +210,8 @@ monitoring, and an n8n editor that is not publicly exposed.
 
 ## Current limits
 
-This is Phase 1. It records commercial facts but does not calculate the Commercial Gate or expose
-any state-changing operation. The original payment amount has no update path in Phase 1; Phase 2
-application services must preserve that invariant when payment review is introduced. MinIO,
-email tooling, audit/automation events, callbacks, provisioning, and n8n workflows do not exist
-yet.
+This is Phase 2. It does not upload payment evidence files or integrate with accounting,
+e-signature, CRM, or payment providers. Payment evidence is represented by an external reference.
+Automation events, n8n callbacks, provisioning, welcome email, client requirements, kickoff, and
+delivery handoff do not exist yet. Phase 3 will add durable automation-event infrastructure
+without moving commercial decisions out of the application.

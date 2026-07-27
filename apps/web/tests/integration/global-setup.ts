@@ -29,6 +29,10 @@ export async function prepareIntegrationDatabase(): Promise<void> {
   if (testRuntimeUrl === testMigrationUrl) {
     throw new Error("Test runtime and migration credentials must be different");
   }
+  const testStaffPassword = process.env.TEST_STAFF_PASSWORD;
+  if (!testStaffPassword) {
+    throw new Error("TEST_STAFF_PASSWORD is required for isolated integration data");
+  }
 
   const repositoryRoot = path.resolve(import.meta.dirname, "../../../..");
   const executable = process.platform === "win32" ? "cmd.exe" : "pnpm";
@@ -51,7 +55,7 @@ export async function prepareIntegrationDatabase(): Promise<void> {
   });
 
   try {
-    await seedDatabase(client, process.env.DEMO_STAFF_PASSWORD ?? "Local-demo-only-password-2026");
+    await seedDatabase(client, testStaffPassword);
     await client.$executeRawUnsafe('GRANT USAGE ON SCHEMA public TO "onboarding_test_user"');
     await client.$executeRawUnsafe(
       'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "onboarding_test_user"',

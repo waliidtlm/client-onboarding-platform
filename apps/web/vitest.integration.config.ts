@@ -1,9 +1,17 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vitest/config";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
+const repositoryEnvironment = path.resolve(projectRoot, "../..", ".env");
+
+if (existsSync(repositoryEnvironment)) {
+  process.loadEnvFile(repositoryEnvironment);
+}
+
+process.env.APP_RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
 
 if (process.env.TEST_DATABASE_URL) {
   process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
@@ -11,6 +19,7 @@ if (process.env.TEST_DATABASE_URL) {
 
 process.env.AUTH_SECRET ??= "integration-auth-secret-with-at-least-32-characters";
 process.env.NEXTAUTH_URL ??= "http://127.0.0.1:3100";
+process.env.TEST_STAFF_PASSWORD ??= "fictional-integration-staff-password-2026";
 
 export default defineConfig({
   resolve: {

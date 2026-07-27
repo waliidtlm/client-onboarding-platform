@@ -14,9 +14,10 @@ vi.mock("next-auth", async (importOriginal) => {
 });
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+const testStaffPassword = process.env.TEST_STAFF_PASSWORD;
 
-if (!testDatabaseUrl) {
-  throw new Error("TEST_DATABASE_URL is required");
+if (!testDatabaseUrl || !testStaffPassword) {
+  throw new Error("TEST_DATABASE_URL and TEST_STAFF_PASSWORD are required");
 }
 
 const client = createPrismaClient(testDatabaseUrl);
@@ -30,7 +31,7 @@ describe("database-backed credentials authentication", () => {
     await expect(
       authorizeStaff({
         email: "ADMIN@NORTHSTAR.TEST",
-        password: process.env.DEMO_STAFF_PASSWORD ?? "Local-demo-only-password-2026",
+        password: testStaffPassword,
       }),
     ).resolves.toMatchObject({
       email: "admin@northstar.test",
@@ -41,7 +42,7 @@ describe("database-backed credentials authentication", () => {
   it.each([
     ["admin@northstar.test", "wrong-password"],
     ["unknown@northstar.test", "wrong-password"],
-    ["disabled@northstar.test", "Local-demo-only-password-2026"],
+    ["disabled@northstar.test", testStaffPassword],
   ])("rejects unavailable credentials without revealing the reason", async (email, password) => {
     await expect(authorizeStaff({ email, password })).resolves.toBeNull();
   });

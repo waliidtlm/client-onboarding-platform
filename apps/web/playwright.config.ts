@@ -1,8 +1,17 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 import { defineConfig } from "@playwright/test";
+
+const repositoryEnvironment = path.resolve(import.meta.dirname, "../..", ".env");
+if (existsSync(repositoryEnvironment)) {
+  process.loadEnvFile(repositoryEnvironment);
+}
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? process.env.WEB_PORT ?? 3100);
 const baseURL = `http://127.0.0.1:${port}`;
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
+process.env.TEST_STAFF_PASSWORD ??= "fictional-playwright-staff-password-2026";
 
 if (!testDatabaseUrl || new URL(testDatabaseUrl).pathname !== "/onboarding_test") {
   throw new Error("Playwright requires TEST_DATABASE_URL targeting onboarding_test");

@@ -1,8 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
-const demoPassword = process.env.DEMO_STAFF_PASSWORD ?? "Local-demo-only-password-2026";
+const testStaffPassword = (() => {
+  const value = process.env.TEST_STAFF_PASSWORD;
+  if (!value) throw new Error("TEST_STAFF_PASSWORD is required");
+  return value;
+})();
 
-async function signIn(page: Page, email: string, password = demoPassword) {
+async function signIn(page: Page, email: string, password = testStaffPassword) {
   await page.goto("/signin");
   await page.getByLabel("Staff email").fill(email);
   await page.getByLabel("Password").fill(password);
@@ -33,7 +37,7 @@ test("active staff can sign in, view list/detail, and sign out", async ({ page }
 for (const [email, password] of [
   ["admin@northstar.test", "incorrect-password"],
   ["unknown@northstar.test", "incorrect-password"],
-  ["disabled@northstar.test", demoPassword],
+  ["disabled@northstar.test", testStaffPassword],
 ] as const) {
   test(`uses a generic rejection for unavailable credentials: ${email}`, async ({ page }) => {
     await signIn(page, email, password);

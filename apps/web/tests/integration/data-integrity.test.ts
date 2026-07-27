@@ -12,9 +12,10 @@ import { seedDatabase } from "../../prisma/seed";
 
 const testRuntimeUrl = process.env.TEST_DATABASE_URL;
 const testMigrationUrl = process.env.TEST_MIGRATION_DATABASE_URL;
+const testStaffPassword = process.env.TEST_STAFF_PASSWORD;
 
-if (!testRuntimeUrl || !testMigrationUrl) {
-  throw new Error("Test database URLs are required");
+if (!testRuntimeUrl || !testMigrationUrl || !testStaffPassword) {
+  throw new Error("Test database URLs and TEST_STAFF_PASSWORD are required");
 }
 
 const runtimeClient = new PrismaClient({
@@ -37,9 +38,8 @@ describe("Phase 1 data integrity", () => {
   });
 
   it("keeps the seed repeatable with predictable counts", async () => {
-    const password = process.env.DEMO_STAFF_PASSWORD ?? "Local-demo-only-password-2026";
-    const first = await seedDatabase(migrationClient, password);
-    const second = await seedDatabase(migrationClient, password);
+    const first = await seedDatabase(migrationClient, testStaffPassword);
+    const second = await seedDatabase(migrationClient, testStaffPassword);
 
     expect(first).toEqual(second);
     expect(second.users).toBeGreaterThanOrEqual(7);

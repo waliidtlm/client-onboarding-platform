@@ -21,6 +21,12 @@ const runtimeUrl = process.env.TEST_DATABASE_URL;
 const migrationUrl = process.env.TEST_MIGRATION_DATABASE_URL;
 if (!runtimeUrl || !migrationUrl) throw new Error("Test database URLs are required");
 
+const runtimeRole = decodeURIComponent(new URL(runtimeUrl).username);
+if (!/^[a-z_][a-z0-9_]*$/.test(runtimeRole)) {
+  throw new Error("TEST_DATABASE_URL must contain a safe PostgreSQL role");
+}
+const quotedRuntimeRole = `"${runtimeRole}"`;
+
 const runtime = new PrismaClient({ adapter: new PrismaPg({ connectionString: runtimeUrl }) });
 const migration = new PrismaClient({ adapter: new PrismaPg({ connectionString: migrationUrl }) });
 let salesId = "";
@@ -57,7 +63,7 @@ describe("Phase 2 transaction and audit integrity", () => {
       where: { externalDealId: "DEAL-ATLAS-2026-001" },
     });
     await migration.$executeRawUnsafe(
-      'REVOKE INSERT ON TABLE "AuditEvent" FROM "onboarding_test_user"',
+      `REVOKE INSERT ON TABLE "AuditEvent" FROM ${quotedRuntimeRole}`,
     );
     try {
       await expect(
@@ -74,7 +80,7 @@ describe("Phase 2 transaction and audit integrity", () => {
       ).rejects.toThrow();
     } finally {
       await migration.$executeRawUnsafe(
-        'GRANT INSERT ON TABLE "AuditEvent" TO "onboarding_test_user"',
+        `GRANT INSERT ON TABLE "AuditEvent" TO ${quotedRuntimeRole}`,
       );
     }
 

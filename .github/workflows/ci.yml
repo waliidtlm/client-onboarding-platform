@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  POSTGRES_ADMIN_USER: ci_platform_admin
+  POSTGRES_ADMIN_PASSWORD: CI_ONLY_admin_password_not_a_secret
+  APP_DB_NAME: onboarding_app
+  APP_DB_USER: ci_onboarding_app_user
+  APP_DB_PASSWORD: CI_ONLY_app_password_not_a_secret
+  MIGRATION_DB_USER: ci_onboarding_migration_user
+  MIGRATION_DB_PASSWORD: CI_ONLY_migration_password_not_a_secret
+  TEST_DB_NAME: onboarding_test
+  TEST_DB_USER: ci_onboarding_test_user
+  TEST_DB_PASSWORD: CI_ONLY_test_password_not_a_secret
+  SHADOW_DB_NAME: onboarding_shadow
+  N8N_DB_NAME: n8n_internal
+  N8N_DB_USER: ci_n8n_user
+  N8N_DB_PASSWORD: CI_ONLY_n8n_password_not_a_secret
+  AUTH_SECRET: CI_ONLY_auth_secret_not_a_real_secret_000000000000
+  NEXTAUTH_URL: http://127.0.0.1:3100
+  TEST_STAFF_PASSWORD: CI_ONLY_fictional_staff_password
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18.4-alpine3.24
+        env:
+          POSTGRES_USER: ci_platform_admin
+          POSTGRES_PASSWORD: CI_ONLY_admin_password_not_a_secret
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username ci_platform_admin --dbname postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      # Stable major tags receive vendor security patches; Dependabot monitors action updates.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.16.0
+          cache: pnpm
+
+      - name: Install dependencies from lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare isolated PostgreSQL roles and databases
+        shell: bash
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: ${{ env.POSTGRES_ADMIN_PASSWORD }}
+          POSTGRES_USER: ${{ env.POSTGRES_ADMIN_USER }}
+          POSTGRES_DB: postgres
+        run: |
+          bash docker/postgres/init/01-create-databases.sh
+          bash docker/postgres/init/02-phase1-databases.sh
+
+      - name: Configure isolated database URLs
+        shell: bash
+        run: |
+          database_scheme="postgresql:"
+          url_separator="//"
+          {
+            echo "DATABASE_URL=${database_scheme}${url_separator}${APP_DB_USER}:${APP_DB_PASSWORD}@127.0.0.1:5432/${APP_DB_NAME}"
+            echo "MIGRATION_DATABASE_URL=${database_scheme}${url_separator}${MIGRATION_DB_USER}:${MIGRATION_DB_PASSWORD}@127.0.0.1:5432/${APP_DB_NAME}"
+            echo "SHADOW_DATABASE_URL=${database_scheme}${url_separator}${MIGRATION_DB_USER}:${MIGRATION_DB_PASSWORD}@127.0.0.1:5432/${SHADOW_DB_NAME}"
+            echo "TEST_DATABASE_URL=${database_scheme}${url_separator}${TEST_DB_USER}:${TEST_DB_PASSWORD}@127.0.0.1:5432/${TEST_DB_NAME}"
+            echo "TEST_MIGRATION_DATABASE_URL=${database_scheme}${url_separator}${MIGRATION_DB_USER}:${MIGRATION_DB_PASSWORD}@127.0.0.1:5432/${TEST_DB_NAME}"
+          } >> "$GITHUB_ENV"
+
+      - name: Validate Prisma schema
+        run: pnpm db:validate
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Run ESLint
+        run: pnpm lint
+
+      - name: Check TypeScript
+        run: pnpm typecheck
+
+      - name: Run unit tests
+        run: pnpm test
+
+      - name: Run PostgreSQL integration tests
+        run: pnpm test:integration
+
+      - name: Build production application
+        run: pnpm build
+
+      - name: Scan for committed secrets
+        run: pnpm secret:scan
+
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
+
+      - name: Check generated diff and whitespace
+        run: git diff --check

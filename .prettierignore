@@ -1,0 +1,9 @@
+.git
+node_modules
+.next
+coverage
+playwright-report
+test-results
+pnpm-lock.yaml
+docs/client_onboarding_platform_blueprint.md
+docs/phase-learning-notes.local.md

@@ -65,6 +65,15 @@ enum CommercialGateStatus {
   CANCELLED
 }
 
+enum CommercialGateBlocker {
+  DEAL_NOT_CLOSED_WON
+  CONTRACT_NOT_SIGNED
+  ACTIVATION_AMOUNT_NOT_SATISFIED
+  PAYMENT_REVIEW_REQUIRED
+  COMMERCIAL_EXCEPTION_PENDING
+  ONBOARDING_CANCELLED
+}
+
 enum ActivationRequirementStatus {
   NOT_SATISFIED
   MANUAL_REVIEW_REQUIRED
@@ -95,20 +104,41 @@ enum PaymentVerificationStatus {
   REJECTED
 }
 
+enum SalesHandoffClientMode {
+  EXISTING
+  NEW
+}
+
+enum CommercialExceptionStatus {
+  OPEN
+  RESOLVED
+  REJECTED
+}
+
+enum AuditActorType {
+  STAFF
+  SYSTEM
+}
+
 model User {
-  id                 String       @id @default(uuid()) @db.Uuid
-  name               String       @db.VarChar(200)
-  email              String       @unique @db.VarChar(320)
-  passwordHash       String       @db.VarChar(255)
-  role               Role
-  isActive           Boolean      @default(true)
-  createdAt          DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime     @updatedAt @db.Timestamptz(3)
-  managedOnboardings Onboarding[] @relation("ProjectManager")
-  submittedRecords   Onboarding[] @relation("SubmittedBy")
-  validatedRecords   Onboarding[] @relation("ValidatedBy")
-  submittedPayments  Payment[]    @relation("PaymentSubmittedBy")
-  verifiedPayments   Payment[]    @relation("PaymentVerifiedBy")
+  id                               String                @id @default(uuid()) @db.Uuid
+  name                             String                @db.VarChar(200)
+  email                            String                @unique @db.VarChar(320)
+  passwordHash                     String                @db.VarChar(255)
+  role                             Role
+  isActive                         Boolean               @default(true)
+  createdAt                        DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt                        DateTime              @updatedAt @db.Timestamptz(3)
+  managedOnboardings               Onboarding[]          @relation("ProjectManager")
+  submittedRecords                 Onboarding[]          @relation("SubmittedBy")
+  validatedRecords                 Onboarding[]          @relation("ValidatedBy")
+  manualActivationApprovals        Onboarding[]          @relation("ManualActivationApprovedBy")
+  manualActivationRevocations      Onboarding[]          @relation("ManualActivationRevokedBy")
+  submittedPayments                Payment[]             @relation("PaymentSubmittedBy")
+  verifiedPayments                 Payment[]             @relation("PaymentVerifiedBy")
+  openedCommercialExceptions       CommercialException[] @relation("CommercialExceptionCreatedBy")
+  resolvedCommercialExceptions     CommercialException[] @relation("CommercialExceptionResolvedBy")
+  auditEvents                      AuditEvent[]           @relation("AuditActor")
 }
 
 model Client {
@@ -120,6 +150,7 @@ model Client {
   createdAt    DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt    DateTime     @updatedAt @db.Timestamptz(3)
   onboardings  Onboarding[]
+  salesHandoffs SalesHandoff[]
 }
 
 model ServicePackage {
@@ -134,6 +165,7 @@ model ServicePackage {
   provisioningTemplates PackageProvisioningTemplate[]
   requirementTemplates  PackageRequirementTemplate[]
   onboardings           Onboarding[]
+  salesHandoffs         SalesHandoff[]
 }
 
 model PackageProvisioningTemplate {
@@ -170,20 +202,31 @@ model PackageRequirementTemplate {
 
 model Onboarding {
   id                          String                      @id @default(uuid()) @db.Uuid
-  clientId                    String                      @db.Uuid
-  servicePackageId            String                      @db.Uuid
+  clientId                    String?                     @db.Uuid
+  servicePackageId            String?                     @db.Uuid
   externalDealId              String?                     @unique @db.VarChar(200)
-  dealStatus                  DealStatus
+  dealStatus                  DealStatus?
   salesHandoffStatus          SalesHandoffStatus
   commercialGateStatus        CommercialGateStatus
+  commercialGateBlockingReasons CommercialGateBlocker[]  @default([])
+  commercialGateEvaluatedAt   DateTime?                   @db.Timestamptz(3)
   status                      OnboardingStatus
   projectManagerId            String?                     @db.Uuid
   submittedById               String                      @db.Uuid
   validatedById               String?                     @db.Uuid
-  invoiceTotal                Decimal                     @db.Decimal(19, 4)
-  currency                    String                      @db.Char(3)
-  activationRequiredAmount    Decimal                     @db.Decimal(19, 4)
+  invoiceTotal                Decimal?                    @db.Decimal(19, 4)
+  currency                    String?                     @db.Char(3)
+  servicePackageNameSnapshot  String?                     @db.VarChar(200)
+  activationTypeSnapshot      ActivationType?
+  activationValueSnapshot     Decimal?                    @db.Decimal(19, 4)
+  activationRequiredAmount    Decimal?                    @db.Decimal(19, 4)
   activationRequirementStatus ActivationRequirementStatus
+  activationInvoiceId         String?                     @unique @db.Uuid
+  manualActivationApprovedById String?                    @db.Uuid
+  manualActivationApprovedAt  DateTime?                   @db.Timestamptz(3)
+  manualActivationRevokedById String?                     @db.Uuid
+  manualActivationRevokedAt   DateTime?                   @db.Timestamptz(3)
+  manualActivationRevocationReason String?
   activatedAt                 DateTime?                   @db.Timestamptz(3)
   welcomeEmailSentAt          DateTime?                   @db.Timestamptz(3)
   requirementsCompletedAt     DateTime?                   @db.Timestamptz(3)
@@ -194,17 +237,49 @@ model Onboarding {
   version                     Int                         @default(1)
   createdAt                   DateTime                    @default(now()) @db.Timestamptz(3)
   updatedAt                   DateTime                    @updatedAt @db.Timestamptz(3)
-  client                      Client                      @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  servicePackage              ServicePackage              @relation(fields: [servicePackageId], references: [id], onDelete: Restrict)
+  client                      Client?                     @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  servicePackage              ServicePackage?             @relation(fields: [servicePackageId], references: [id], onDelete: Restrict)
   projectManager              User?                       @relation("ProjectManager", fields: [projectManagerId], references: [id], onDelete: Restrict)
   submittedBy                 User                        @relation("SubmittedBy", fields: [submittedById], references: [id], onDelete: Restrict)
   validatedBy                 User?                       @relation("ValidatedBy", fields: [validatedById], references: [id], onDelete: Restrict)
+  manualActivationApprovedBy  User?                       @relation("ManualActivationApprovedBy", fields: [manualActivationApprovedById], references: [id], onDelete: Restrict)
+  manualActivationRevokedBy   User?                       @relation("ManualActivationRevokedBy", fields: [manualActivationRevokedById], references: [id], onDelete: Restrict)
+  salesHandoff                SalesHandoff?
   contracts                   Contract[]
-  invoices                    Invoice[]
+  invoices                    Invoice[]                   @relation("OnboardingInvoices")
+  activationInvoice           Invoice?                    @relation("ActivationInvoice", fields: [activationInvoiceId], references: [id], onDelete: Restrict)
+  commercialExceptions        CommercialException[]
+  auditEvents                 AuditEvent[]
 
-  @@unique([id, currency])
   @@index([status, createdAt])
   @@index([projectManagerId])
+}
+
+model SalesHandoff {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  onboardingId          String                  @unique @db.Uuid
+  submissionKey         String                  @unique @db.VarChar(100)
+  externalDealId        String?                 @unique @db.VarChar(200)
+  clientMode            SalesHandoffClientMode?
+  existingClientId      String?                 @db.Uuid
+  newClientCompanyName  String?                 @db.VarChar(200)
+  newClientContactName  String?                 @db.VarChar(200)
+  newClientContactEmail String?                 @db.VarChar(320)
+  newClientContactPhone String?                 @db.VarChar(50)
+  servicePackageId      String?                 @db.Uuid
+  dealStatus            DealStatus?
+  agreedTotal           Decimal?                @db.Decimal(19, 4)
+  currency              String?                 @db.Char(3)
+  salesNotes            String?
+  validationErrors      Json?
+  version               Int                     @default(1)
+  createdAt             DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                @updatedAt @db.Timestamptz(3)
+  onboarding            Onboarding              @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  existingClient        Client?                 @relation(fields: [existingClientId], references: [id], onDelete: Restrict)
+  servicePackage        ServicePackage?         @relation(fields: [servicePackageId], references: [id], onDelete: Restrict)
+
+  @@index([servicePackageId])
 }
 
 model Contract {
@@ -227,15 +302,16 @@ model Invoice {
   id                String        @id @default(uuid()) @db.Uuid
   onboardingId      String        @db.Uuid
   status            InvoiceStatus
-  invoiceNumber     String        @unique @db.VarChar(100)
+  invoiceNumber     String?       @unique @db.VarChar(100)
   totalAmount       Decimal       @db.Decimal(19, 4)
   currency          String        @db.Char(3)
-  dueAt             DateTime      @db.Timestamptz(3)
+  dueAt             DateTime?     @db.Timestamptz(3)
   overdueAt         DateTime?     @db.Timestamptz(3)
   externalReference String?       @unique @db.VarChar(200)
   createdAt         DateTime      @default(now()) @db.Timestamptz(3)
   updatedAt         DateTime      @updatedAt @db.Timestamptz(3)
-  onboarding        Onboarding    @relation(fields: [onboardingId, currency], references: [id, currency], onDelete: Restrict)
+  onboarding        Onboarding    @relation("OnboardingInvoices", fields: [onboardingId], references: [id], onDelete: Restrict)
+  activationForOnboarding Onboarding? @relation("ActivationInvoice")
   payments          Payment[]
 
   @@unique([id, currency])
@@ -254,6 +330,8 @@ model Payment {
   verifiedById       String?                   @db.Uuid
   verifiedAt         DateTime?                 @db.Timestamptz(3)
   externalReference  String?                   @unique @db.VarChar(200)
+  recordingKey       String                    @unique @db.VarChar(100)
+  version            Int                       @default(1)
   createdAt          DateTime                  @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime                  @updatedAt @db.Timestamptz(3)
   invoice            Invoice                   @relation(fields: [invoiceId, currency], references: [id, currency], onDelete: Restrict)
@@ -261,4 +339,42 @@ model Payment {
   verifiedBy         User?                     @relation("PaymentVerifiedBy", fields: [verifiedById], references: [id], onDelete: Restrict)
 
   @@index([invoiceId])
+}
+
+model CommercialException {
+  id           String                    @id @default(uuid()) @db.Uuid
+  onboardingId String                    @db.Uuid
+  status       CommercialExceptionStatus @default(OPEN)
+  reason       String
+  createdById  String                    @db.Uuid
+  resolvedById String?                   @db.Uuid
+  resolutionNote String?
+  resolvedAt   DateTime?                 @db.Timestamptz(3)
+  createdAt    DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime                  @updatedAt @db.Timestamptz(3)
+  onboarding   Onboarding                @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  createdBy    User                      @relation("CommercialExceptionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  resolvedBy   User?                     @relation("CommercialExceptionResolvedBy", fields: [resolvedById], references: [id], onDelete: Restrict)
+
+  @@index([onboardingId, status])
+}
+
+model AuditEvent {
+  id            String         @id @default(uuid()) @db.Uuid
+  onboardingId  String         @db.Uuid
+  actorType      AuditActorType
+  actorId        String?        @db.Uuid
+  action         String         @db.VarChar(100)
+  entityType     String         @db.VarChar(100)
+  entityId       String         @db.VarChar(200)
+  previousValue  Json?
+  newValue       Json?
+  metadata       Json?
+  correlationId  String         @db.Uuid
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  onboarding     Onboarding     @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  actor          User?          @relation("AuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([onboardingId, createdAt])
+  @@index([correlationId])
 }

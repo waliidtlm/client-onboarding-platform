@@ -23,7 +23,7 @@ test("active staff can sign in, view list/detail, and sign out", async ({ page }
 
   await page.getByRole("link", { name: "Atlas Fitness Studio" }).click();
   await expect(page.getByRole("heading", { name: "Atlas Fitness Studio" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Commercial" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Commercial Gate", exact: true })).toBeVisible();
   await expect(page.getByText("USD 2000.00", { exact: false })).toBeVisible();
 
   await page.getByRole("button", { name: "Sign out" }).click();

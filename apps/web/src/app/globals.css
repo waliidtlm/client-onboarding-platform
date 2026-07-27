@@ -127,6 +127,114 @@ button:disabled {
   color: var(--danger);
 }
 
+.field-error {
+  color: var(--danger);
+  font-weight: 400;
+}
+
+.commercial-form,
+.inline-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.commercial-form label,
+.inline-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+}
+
+.commercial-form input,
+.commercial-form select,
+.commercial-form textarea,
+.inline-form input,
+.inline-form select {
+  width: 100%;
+  padding: 0.7rem;
+  border: 1px solid #aeb8c5;
+  border-radius: 0.5rem;
+  background: white;
+  font: inherit;
+}
+
+.commercial-form fieldset {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+}
+
+.inline-choice {
+  display: flex !important;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.inline-choice input {
+  width: auto;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.compact-form,
+.commercial-controls,
+.payment-review-card {
+  margin-top: 1rem;
+}
+
+.commercial-controls {
+  display: grid;
+  gap: 1rem;
+}
+
+.gate-result,
+.payment-review-card,
+.notice {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: #f8fafc;
+}
+
+.notice-success {
+  border-color: #75c58f;
+  background: #ecfdf3;
+}
+
+.notice-error,
+.danger-zone {
+  border-color: #f0a6a0;
+  background: #fff5f4;
+}
+
+.button-danger {
+  background: var(--danger);
+}
+
+.audit-timeline {
+  display: grid;
+  gap: 1rem;
+  padding-left: 1.4rem;
+}
+
+.audit-timeline li {
+  padding-left: 0.5rem;
+}
+
+.audit-timeline span,
+.audit-timeline time {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .dashboard-shell {
   min-height: 100vh;
 }
@@ -278,6 +386,10 @@ dd {
   .summary-grid,
   .configuration-grid,
   .detail-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -4,13 +4,18 @@ import { Permission, requirePermission } from "@/lib/auth/authorization";
 import { listOnboardings } from "@/lib/onboardings/queries";
 
 export default async function OnboardingsPage() {
-  await requirePermission(Permission.ONBOARDING_READ, "/onboardings");
+  const staff = await requirePermission(Permission.ONBOARDING_READ, "/onboardings");
   const onboardings = await listOnboardings();
 
   return (
     <section>
       <p className="eyebrow">Authoritative records</p>
       <h1>Onboardings</h1>
+      {["ADMIN", "SALES"].includes(staff.role) ? (
+        <Link className="button-link" href="/onboardings/new">
+          New sales handoff
+        </Link>
+      ) : null}
       <div className="table-wrap">
         <table>
           <thead>

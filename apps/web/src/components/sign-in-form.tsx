@@ -1,11 +1,18 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useState, type FormEvent } from "react";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
+
+const subscribeToHydration = () => () => undefined;
 
 export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isHydrated = useSyncExternalStore(
+    subscribeToHydration,
+    () => true,
+    () => false,
+  );
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,7 +51,7 @@ export function SignInForm({ callbackUrl }: { callbackUrl: string }) {
           {error}
         </p>
       ) : null}
-      <button disabled={isSubmitting} type="submit">
+      <button disabled={!isHydrated || isSubmitting} type="submit">
         {isSubmitting ? "Signing in..." : "Sign in"}
       </button>
     </form>

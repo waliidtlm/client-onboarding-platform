@@ -125,6 +125,12 @@ ALTER DEFAULT PRIVILEGES FOR ROLE :"migration_user" IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"runtime_user";
 ALTER DEFAULT PRIVILEGES FOR ROLE :"migration_user" IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO :"runtime_user";
+
+SELECT format(
+  'REVOKE UPDATE, DELETE ON TABLE public."AuditEvent" FROM %I',
+  :'runtime_user'
+)
+WHERE to_regclass('public."AuditEvent"') IS NOT NULL \gexec
 SQL
 }
 

@@ -1,4 +1,5 @@
 import type { CommercialGateBlocker, CommercialGateStatus } from "@/generated/prisma/client";
+import type { AutomationEventEnvelope } from "@/application/automation/types";
 
 export type CommercialMutationResult = Readonly<{
   onboardingId: string;
@@ -8,4 +9,6 @@ export type CommercialMutationResult = Readonly<{
   blockingReasons: readonly CommercialGateBlocker[];
   activatedAt: string | null;
   idempotent: boolean;
+  automationEvent?: AutomationEventEnvelope | null;
+  historicalActivation?: boolean;
 }>;

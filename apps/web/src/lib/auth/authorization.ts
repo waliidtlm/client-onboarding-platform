@@ -21,6 +21,8 @@ export enum Permission {
   COMMERCIAL_GATE_RECALCULATE = "COMMERCIAL_GATE_RECALCULATE",
   COMMERCIAL_EXCEPTION_MANAGE = "COMMERCIAL_EXCEPTION_MANAGE",
   ONBOARDING_CANCEL = "ONBOARDING_CANCEL",
+  AUTOMATION_RECOVERY_READ = "AUTOMATION_RECOVERY_READ",
+  AUTOMATION_RETRY = "AUTOMATION_RETRY",
 }
 
 const allRoles = [
@@ -60,6 +62,8 @@ const permissionRoles: Record<Permission, readonly Role[]> = {
   [Permission.COMMERCIAL_GATE_RECALCULATE]: [Role.ADMIN],
   [Permission.COMMERCIAL_EXCEPTION_MANAGE]: [Role.ADMIN],
   [Permission.ONBOARDING_CANCEL]: [Role.ADMIN, Role.OPERATIONS],
+  [Permission.AUTOMATION_RECOVERY_READ]: [Role.ADMIN],
+  [Permission.AUTOMATION_RETRY]: [Role.ADMIN],
 };
 
 export type CurrentStaff = Readonly<{

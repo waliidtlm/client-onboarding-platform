@@ -9,6 +9,10 @@ import {
 } from "@/generated/prisma/client";
 import { prisma } from "@/lib/database";
 import { appendAuditEvent } from "@/application/commercial/audit";
+import {
+  appendOnboardingActivatedEvent,
+  findOnboardingActivatedEvent,
+} from "@/application/automation/event-service";
 import { recalculateGateSchema } from "@/application/commercial/schemas";
 import {
   executeService,
@@ -22,6 +26,7 @@ import type { CommercialMutationResult } from "@/application/commercial/types";
 import { calculateActivationRequirement } from "@/domain/commercial/activation-requirement";
 import { calculateCommercialGate } from "@/domain/commercial/commercial-gate";
 import type { Result } from "@/domain/errors";
+import { getServerEnvironment } from "@/lib/env";
 
 function sameStrings(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
@@ -225,6 +230,17 @@ export async function refreshCommercialState(
     });
   }
 
+  const automationEvent = shouldActivate
+    ? await appendOnboardingActivatedEvent(tx, {
+        onboardingId: onboarding.id,
+        correlationId: input.correlationId,
+        occurredAt: now,
+        maxAttempts: getServerEnvironment().AUTOMATION_MAX_ATTEMPTS,
+      })
+    : alreadyActivated
+      ? await findOnboardingActivatedEvent(tx, onboarding.id)
+      : null;
+
   return {
     onboardingId: onboarding.id,
     version: nextVersion,
@@ -235,6 +251,8 @@ export async function refreshCommercialState(
       ? now.toISOString()
       : (onboarding.activatedAt?.toISOString() ?? null),
     idempotent: !businessChanged,
+    automationEvent,
+    historicalActivation: alreadyActivated && automationEvent === null,
   };
 }
 

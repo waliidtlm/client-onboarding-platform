@@ -1,0 +1,76 @@
+{
+  "name": "Phase 3 Onboarding Activation Consumer",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e34bb7a6-8f2e-4ec4-a0e6-7b0a609dc19c",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, -80]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "4299c127-70a8-4d70-9c78-f501704f5e7f",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst http = require('http');\nconst https = require('https');\n\nconst baseUrl = $env.AUTOMATION_API_BASE_URL;\nconst serviceToken = $env.AUTOMATION_SERVICE_TOKEN;\nconst hmacSecret = $env.AUTOMATION_HMAC_SECRET;\nconst workerId = $env.AUTOMATION_WORKER_ID;\nconst workflowName = 'Phase 3 Onboarding Activation Consumer';\nconst executionId = String($execution.id);\n\nif (!baseUrl || !serviceToken || !hmacSecret || !workerId) {\n  throw new Error('AUTOMATION_CONFIGURATION_INVALID');\n}\n\nfunction classificationFor(code) {\n  if (['NETWORK_TIMEOUT', 'RATE_LIMITED', 'TEMPORARY_PROVIDER_FAILURE', 'UPSTREAM_5XX'].includes(code)) return 'RETRYABLE';\n  if (['INVALID_BUSINESS_STATE', 'MISSING_BUSINESS_CONFIGURATION', 'OPERATIONAL_HOLD'].includes(code)) return 'OPERATOR_REMEDIABLE';\n  return 'PERMANENT';\n}\n\nasync function signedRequest(method, path, body) {\n  const bodyText = body === undefined ? '' : JSON.stringify(body);\n  const timestamp = String(Math.floor(Date.now() / 1000));\n  const bodyHash = crypto.createHash('sha256').update(bodyText).digest('hex');\n  const canonical = `${method}\\n${path}\\n${timestamp}\\n${bodyHash}`;\n  const signature = `sha256=${crypto.createHmac('sha256', hmacSecret).update(canonical).digest('hex')}`;\n  const target = `${baseUrl}${path}`;\n  const transport = baseUrl.startsWith('https://') ? https : http;\n  return await new Promise((resolve, reject) => {\n    const request = transport.request(target, {\n      method,\n      headers: {\n        authorization: `Bearer ${serviceToken}`,\n        'x-automation-timestamp': timestamp,\n        'x-automation-signature': signature,\n        ...(body === undefined ? {} : { 'content-type': 'application/json' }),\n      },\n    }, (response) => {\n      let responseText = '';\n      response.setEncoding('utf8');\n      response.on('data', (chunk) => {\n        if (responseText.length < 65536) responseText += chunk;\n      });\n      response.on('end', () => {\n        let responseBody = null;\n        if (responseText) {\n          try { responseBody = JSON.parse(responseText); } catch { responseBody = null; }\n        }\n        const status = response.statusCode || 0;\n        resolve({ response: { status, ok: status >= 200 && status < 300 }, responseBody });\n      });\n    });\n    request.on('error', reject);\n    if (body !== undefined) request.write(bodyText);\n    request.end();\n  });\n}\n\nfunction safeApiCode(responseBody, fallback) {\n  const code = responseBody?.error?.code;\n  return typeof code === 'string' && /^[A-Z0-9_]+$/.test(code) ? code : fallback;\n}\n\nasync function reportFailure(claim, code, message, failedNode) {\n  const body = {\n    eventId: claim.event.eventId,\n    runId: claim.run.runId,\n    idempotencyKey: claim.run.idempotencyKey,\n    workerId,\n    n8nExecutionId: executionId,\n    failedNode,\n    errorCode: code,\n    errorMessage: message,\n    classification: classificationFor(code),\n    reportedAt: new Date().toISOString(),\n  };\n  const result = await signedRequest('POST', '/api/internal/automation/failure', body);\n  if (!result.response.ok) throw new Error('AUTOMATION_FAILURE_REPORT_REJECTED');\n}\n\nlet claim = null;\nlet stage = 'claim';\ntry {\n  const claimResult = await signedRequest('POST', '/api/internal/automation/claim', {\n    requestId: crypto.randomUUID(),\n    workerId,\n    workflowName,\n  });\n  if (claimResult.response.status === 204) {\n    return [{ json: { outcome: 'EMPTY' } }];\n  }\n  if (!claimResult.response.ok || claimResult.responseBody?.kind !== 'CLAIMED') {\n    const code = safeApiCode(claimResult.responseBody, 'UNEXPECTED_RESPONSE');\n    throw new Error(`AUTOMATION_CLAIM_REJECTED_${claimResult.response.status}_${code}`);\n  }\n  claim = claimResult.responseBody;\n\n  stage = 'context';\n  const query = `runId=${encodeURIComponent(claim.run.runId)}&idempotencyKey=${encodeURIComponent(claim.run.idempotencyKey)}&workerId=${encodeURIComponent(workerId)}`;\n  const contextResult = await signedRequest(\n    'GET',\n    `/api/internal/automation/events/${claim.event.eventId}/context?${query}`,\n  );\n  if (!contextResult.response.ok) {\n    const code = safeApiCode(contextResult.responseBody, 'TEMPORARY_PROVIDER_FAILURE');\n    await reportFailure(claim, code, 'The application rejected the current processing context.', 'Load Current Context');\n    throw new Error('AUTOMATION_FAILURE_ALREADY_REPORTED');\n  }\n  const context = contextResult.responseBody;\n\n  stage = 'contract-validation';\n  const contractIsValid =\n    context?.eventId === claim.event.eventId &&\n    context?.runId === claim.run.runId &&\n    context?.eventType === 'ONBOARDING_ACTIVATED' &&\n    context?.schemaVersion === 1 &&\n    context?.onboarding?.status === 'READY_FOR_ONBOARDING' &&\n    typeof context?.onboarding?.activatedAt === 'string';\n  if (!contractIsValid) {\n    await reportFailure(claim, 'INVALID_EVENT_INTEGRITY', 'The context response did not match the supported activation contract.', 'Validate Activation Contract');\n    throw new Error('AUTOMATION_FAILURE_ALREADY_REPORTED');\n  }\n\n  stage = 'callback';\n  const callback = await signedRequest(\n    'POST',\n    '/api/internal/automation/callback',\n    {\n      eventId: claim.event.eventId,\n      runId: claim.run.runId,\n      idempotencyKey: claim.run.idempotencyKey,\n      workerId,\n      n8nExecutionId: executionId,\n      resultStatus: 'COMPLETED',\n      externalReferences: {},\n    },\n  );\n  if (!callback.response.ok) {\n    throw new Error('AUTOMATION_CALLBACK_REJECTED');\n  }\n  return [{\n    json: {\n      outcome: 'COMPLETED',\n      eventId: claim.event.eventId,\n      runId: claim.run.runId,\n      onboardingId: context.onboarding.id,\n    },\n  }];\n} catch (error) {\n  if (error instanceof Error && error.message === 'AUTOMATION_FAILURE_ALREADY_REPORTED') throw error;\n  if (!claim) {\n    if (error instanceof Error && /^AUTOMATION_CLAIM_REJECTED_[0-9]{3}_[A-Z0-9_]+$/.test(error.message)) throw error;\n    throw new Error('AUTOMATION_CLAIM_FAILED');\n  }\n  try {\n    await reportFailure(\n      claim,\n      'TEMPORARY_PROVIDER_FAILURE',\n      `The automation consumer failed during ${stage}.`,\n      stage,\n    );\n    throw new Error('AUTOMATION_FAILURE_ALREADY_REPORTED');\n  } catch (reportError) {\n    if (reportError instanceof Error && reportError.message === 'AUTOMATION_FAILURE_ALREADY_REPORTED') throw reportError;\n    const fallback = Buffer.from(JSON.stringify({\n      eventId: claim.event.eventId,\n      runId: claim.run.runId,\n      idempotencyKey: claim.run.idempotencyKey,\n      workerId,\n      n8nExecutionId: executionId,\n      failedNode: stage,\n    })).toString('base64url');\n    throw new Error(`AUTOMATION_FAILURE_CONTEXT:${fallback}`);\n  }\n}"
+      },
+      "id": "54352b31-282c-4e8c-9bc1-65db2c17a856",
+      "name": "Claim and Process One Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [300, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Claim and Process One Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Claim and Process One Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "phase3-automation-error-handler",
+    "saveManualExecutions": true
+  },
+  "versionId": "5209ee34-97b6-4661-8133-9bb8f9e54ac4",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "phase3-activation-consumer",
+  "tags": []
+}

@@ -2,6 +2,7 @@ import {
   AutomationEventStatus,
   AutomationFailureClassification,
   AutomationRunStatus,
+  NotificationStatus,
   Prisma,
   type PrismaClient,
 } from "@/generated/prisma/client";
@@ -43,14 +44,20 @@ export async function failAutomationRun(
         reject("NOT_FOUND", "The automation event or run does not exist.");
       }
       if (run.status === AutomationRunStatus.FAILED) {
+        const uncertainWelcomeReplay =
+          event.eventType === "WELCOME_EMAIL_REQUESTED" &&
+          event.status === AutomationEventStatus.FAILED &&
+          run.errorCode === "EMAIL_DELIVERY_UNCERTAIN" &&
+          run.failureClassification === AutomationFailureClassification.OPERATOR_REMEDIABLE;
         if (
           run.idempotencyKey === input.idempotencyKey &&
           run.workerId === input.workerId &&
           run.n8nExecutionId === input.n8nExecutionId &&
-          run.errorCode === input.errorCode &&
-          run.errorMessage === safeMessage &&
           run.failedNode === input.failedNode &&
-          run.failureClassification === classification
+          (uncertainWelcomeReplay ||
+            (run.errorCode === input.errorCode &&
+              run.errorMessage === safeMessage &&
+              run.failureClassification === classification))
         ) {
           return {
             eventId: event.id,
@@ -75,11 +82,31 @@ export async function failAutomationRun(
       if (!event.leaseExpiresAt || event.leaseExpiresAt <= now) {
         reject("LEASE_EXPIRED", "The automation lease has expired.");
       }
-      const targetStatus = failureTargetStatus({
-        classification,
-        attemptCount: event.attemptCount,
-        maxAttempts: event.maxAttempts,
-      });
+      const payload =
+        event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
+          ? (event.payload as Record<string, unknown>)
+          : {};
+      const notification =
+        event.eventType === "WELCOME_EMAIL_REQUESTED" && typeof payload.notificationId === "string"
+          ? await tx.notificationLog.findUnique({ where: { id: payload.notificationId } })
+          : null;
+      const uncertainWelcome =
+        notification?.onboardingId === event.aggregateId &&
+        notification.status === NotificationStatus.SENDING;
+      const recordedClassification = uncertainWelcome
+        ? AutomationFailureClassification.OPERATOR_REMEDIABLE
+        : classification;
+      const recordedErrorCode = uncertainWelcome ? "EMAIL_DELIVERY_UNCERTAIN" : input.errorCode;
+      const recordedMessage = uncertainWelcome
+        ? "The workflow failed after email delivery began; delivery requires administrator verification."
+        : safeMessage;
+      const targetStatus = uncertainWelcome
+        ? AutomationEventStatus.FAILED
+        : failureTargetStatus({
+            classification,
+            attemptCount: event.attemptCount,
+            maxAttempts: event.maxAttempts,
+          });
       const availableAt =
         targetStatus === AutomationEventStatus.PENDING
           ? retryAvailableAt(now, event.attemptCount, environment.AUTOMATION_RETRY_BASE_SECONDS)
@@ -90,13 +117,22 @@ export async function failAutomationRun(
           status: AutomationRunStatus.FAILED,
           completedAt: now,
           n8nExecutionId: input.n8nExecutionId,
-          errorCode: input.errorCode,
-          errorMessage: safeMessage,
+          errorCode: recordedErrorCode,
+          errorMessage: recordedMessage,
           failedNode: input.failedNode,
-          failureClassification: classification as AutomationFailureClassification,
+          failureClassification: recordedClassification,
           failureReportedAt: now,
         },
       });
+      if (uncertainWelcome && notification) {
+        await tx.notificationLog.update({
+          where: { id: notification.id },
+          data: {
+            status: NotificationStatus.DELIVERY_UNCERTAIN,
+            failureReason: recordedMessage,
+          },
+        });
+      }
       await tx.automationEvent.update({
         where: { id: event.id },
         data: {
@@ -106,8 +142,8 @@ export async function failAutomationRun(
           claimedBy: null,
           claimedAt: null,
           leaseExpiresAt: null,
-          lastErrorCode: input.errorCode,
-          lastError: safeMessage,
+          lastErrorCode: recordedErrorCode,
+          lastError: recordedMessage,
         },
       });
       return {

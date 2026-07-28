@@ -11,6 +11,8 @@ const operatorRemediableCodes = new Set([
   "INVALID_BUSINESS_STATE",
   "MISSING_BUSINESS_CONFIGURATION",
   "OPERATIONAL_HOLD",
+  "PROJECT_MANAGER_REQUIRED",
+  "EMAIL_DELIVERY_UNCERTAIN",
 ]);
 
 const permanentCodes = new Set([

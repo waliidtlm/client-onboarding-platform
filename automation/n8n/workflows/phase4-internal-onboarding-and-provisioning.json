@@ -1,0 +1,287 @@
+{
+  "name": "Internal Onboarding and Provisioning",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "0d58faba-47a1-44e4-9807-775424377968",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, -80]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 1 }]
+        }
+      },
+      "id": "9a204e80-1432-4b59-a4da-ef12261e5d15",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto');const http=require('http');const https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_SERVICE_TOKEN,secret=$env.AUTOMATION_HMAC_SECRET,workerId=$env.AUTOMATION_WORKER_ID;if(!base||!token||!secret||!workerId)throw new Error('AUTOMATION_CONFIGURATION_INVALID');async function send(method,path,body){const text=body===undefined?'':JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`${method}\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;return await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method,headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',c=>value+=c);res.on('end',()=>resolve({status:res.statusCode||0,body:value?JSON.parse(value):null}));});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});}const result=await send('POST','/api/internal/automation/claim',{requestId:crypto.randomUUID(),workerId,workflowName:'Internal Onboarding and Provisioning'});if(result.status===204)return[{json:{outcome:'EMPTY'}}];if(result.status<200||result.status>=300)throw new Error('AUTOMATION_CLAIM_FAILED');return[{json:{outcome:'CLAIMED',claim:result.body,workerId,executionId:String($execution.id)}}];"
+      },
+      "id": "b51cb731-67e4-4447-886c-c430d057531e",
+      "name": "Claim One Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.outcome }}",
+              "rightValue": "CLAIMED",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "82c5b467-6ee1-4c76-a7ea-7cdd1b4c5622",
+      "name": "Event Claimed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [460, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_SERVICE_TOKEN,secret=$env.AUTOMATION_HMAC_SECRET;const claim=$json.claim,workerId=$json.workerId;const query=`runId=${encodeURIComponent(claim.run.runId)}&idempotencyKey=${encodeURIComponent(claim.run.idempotencyKey)}&workerId=${encodeURIComponent(workerId)}`,path=`/api/internal/automation/events/${claim.event.eventId}/context?${query}`,ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update('').digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`GET\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;const body=await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method:'GET',headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig},timeout:30000},res=>{let value='';res.on('data',c=>value+=c);res.on('end',()=>{if((res.statusCode||0)<200||(res.statusCode||0)>=300)return reject(new Error('CONTEXT_REJECTED'));resolve(JSON.parse(value));});});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.end();});return[{json:{...$json,context:body}}];"
+      },
+      "id": "55daa914-78b8-4e05-a961-6dff6ca17b8d",
+      "name": "Load Event Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, -80]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.context.eventType }}",
+                    "rightValue": "ONBOARDING_ACTIVATED",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "activation"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.context.eventType }}",
+                    "rightValue": "PROVISIONING_TASK_REQUESTED",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "task"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.context.eventType }}",
+                    "rightValue": "WELCOME_EMAIL_REQUESTED",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "welcome"
+            }
+          ]
+        }
+      },
+      "id": "855553b1-8729-4f17-a8e8-3b7d0eef28cf",
+      "name": "Route Approved Event Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [900, -80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_SERVICE_TOKEN,secret=$env.AUTOMATION_HMAC_SECRET,path='/api/internal/automation/provisioning/initialize',method='POST',claim=$json.claim,body={eventId:claim.event.eventId,runId:claim.run.runId,idempotencyKey:claim.run.idempotencyKey,workerId:$json.workerId,n8nExecutionId:$json.executionId},text=JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`${method}\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;const result=await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method,headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',c=>value+=c);res.on('end',()=>resolve({status:res.statusCode,body:value?JSON.parse(value):null}));});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});if(result.status<200||result.status>=300)throw new Error('INITIALIZATION_REJECTED');return[{json:{outcome:'INITIALIZED',result:result.body}}];"
+      },
+      "id": "51a9d1c6-406e-489f-9a11-29f2ff8b1108",
+      "name": "Initialize Task Snapshots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, -320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_SERVICE_TOKEN,secret=$env.AUTOMATION_HMAC_SECRET,claim=$json.claim,task=$json.context.task,path=`/api/internal/automation/provisioning/tasks/${task.id}/start`,method='POST',body={eventId:claim.event.eventId,runId:claim.run.runId,idempotencyKey:claim.run.idempotencyKey,workerId:$json.workerId,n8nExecutionId:$json.executionId,taskId:task.id,expectedTaskVersion:task.version},text=JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`${method}\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;const result=await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method,headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',c=>value+=c);res.on('end',()=>resolve({status:res.statusCode,body:value?JSON.parse(value):null}));});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});if(result.status<200||result.status>=300)throw new Error('TASK_START_REJECTED');return[{json:{...$json,start:result.body}}];"
+      },
+      "id": "06b359f4-dd48-47e6-b545-0e4b095ff8d0",
+      "name": "Reserve Provider Attempt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, -80]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.start.instruction }}",
+              "rightValue": "EXECUTE",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "cc1069f2-bc94-4203-9720-c90b95ce2f1a",
+      "name": "Provider Execution Authorized?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1380, -80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_SERVICE_TOKEN,secret=$env.AUTOMATION_HMAC_SECRET,claim=$json.claim,task=$json.context.task,start=$json.start,path=`/api/internal/automation/provisioning/tasks/${task.id}/execute`,method='POST',body={eventId:claim.event.eventId,runId:claim.run.runId,idempotencyKey:claim.run.idempotencyKey,workerId:$json.workerId,n8nExecutionId:$json.executionId,taskId:task.id,expectedTaskVersion:start.taskVersion,attemptId:start.attemptId,attemptNumber:start.attemptNumber},text=JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`${method}\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;const result=await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method,headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',c=>value+=c);res.on('end',()=>resolve({status:res.statusCode,body:value?JSON.parse(value):null}));});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});if(result.status<200||result.status>=300)throw new Error('SANDBOX_PROVIDER_REJECTED');return[{json:{...$json,provider:result.body}}];"
+      },
+      "id": "b902a52d-2c09-4b91-b983-0c159212199f",
+      "name": "Execute Local Sandbox Provider",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, -160]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.provider.kind }}",
+              "rightValue": "COMPLETED",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "bc5e94f8-5761-4629-a38c-d7d8b5816e5e",
+      "name": "Provider Completed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1820, -160]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_SERVICE_TOKEN,secret=$env.AUTOMATION_HMAC_SECRET,claim=$json.claim,task=$json.context.task,start=$json.start,path=`/api/internal/automation/provisioning/tasks/${task.id}/complete`,method='POST',body={eventId:claim.event.eventId,runId:claim.run.runId,idempotencyKey:claim.run.idempotencyKey,workerId:$json.workerId,n8nExecutionId:$json.executionId,taskId:task.id,expectedTaskVersion:start.taskVersion,attemptId:start.attemptId,attemptNumber:start.attemptNumber,externalReference:$json.provider.externalReference},text=JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`${method}\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;const result=await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method,headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',c=>value+=c);res.on('end',()=>resolve({status:res.statusCode,body:value?JSON.parse(value):null}));});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});if(result.status<200||result.status>=300)throw new Error('TASK_COMPLETION_REJECTED');return[{json:{outcome:'TASK_COMPLETED',result:result.body}}];"
+      },
+      "id": "39213f37-369b-43a8-847b-9b6a3558c64e",
+      "name": "Record Task Completion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2040, -240]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_SERVICE_TOKEN,secret=$env.AUTOMATION_HMAC_SECRET,claim=$json.claim,task=$json.context.task,start=$json.start,path=`/api/internal/automation/provisioning/tasks/${task.id}/failure`,method='POST',provider=$json.provider,body={eventId:claim.event.eventId,runId:claim.run.runId,idempotencyKey:claim.run.idempotencyKey,workerId:$json.workerId,n8nExecutionId:$json.executionId,taskId:task.id,expectedTaskVersion:start.taskVersion,attemptId:start.attemptId,attemptNumber:start.attemptNumber,errorCode:provider.errorCode,errorMessage:provider.errorMessage,retryable:provider.retryable},text=JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`${method}\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;const result=await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method,headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',c=>value+=c);res.on('end',()=>resolve({status:res.statusCode,body:value?JSON.parse(value):null}));});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});if(result.status<200||result.status>=300)throw new Error('TASK_FAILURE_REJECTED');return[{json:{outcome:'TASK_FAILURE_RECORDED',result:result.body}}];"
+      },
+      "id": "4de1254d-f0ed-4d0d-946e-bda25adb88db",
+      "name": "Record Provider Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2040, -80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_SERVICE_TOKEN,secret=$env.AUTOMATION_HMAC_SECRET,claim=$json.claim,notification=$json.context.notification,path='/api/internal/automation/welcome-email/begin',method='POST',body={eventId:claim.event.eventId,runId:claim.run.runId,idempotencyKey:claim.run.idempotencyKey,workerId:$json.workerId,n8nExecutionId:$json.executionId,notificationId:notification.id},text=JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`${method}\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;const result=await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method,headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',c=>value+=c);res.on('end',()=>resolve({status:res.statusCode,body:value?JSON.parse(value):null}));});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});if(result.status<200||result.status>=300)throw new Error('WELCOME_BEGIN_REJECTED');return[{json:{...$json,delivery:result.body}}];"
+      },
+      "id": "ff1630c2-6f8c-4616-a15c-838cedb39383",
+      "name": "Begin Welcome Delivery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 200]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $json.delivery.senderName + ' <' + $json.delivery.senderAddress + '>' }}",
+        "toEmail": "={{ $json.delivery.recipient }}",
+        "subject": "={{ $json.delivery.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $json.delivery.textContent }}",
+        "options": { "appendAttribution": false }
+      },
+      "id": "c7c62650-31f2-455f-8cb0-a71b20d551ca",
+      "name": "Send Frozen Welcome Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "onError": "continueRegularOutput",
+      "position": [1380, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const source=$('Begin Welcome Delivery').item.json,delivery=source.delivery,claim=source.claim,base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_SERVICE_TOKEN,secret=$env.AUTOMATION_HMAC_SECRET,path='/api/internal/automation/welcome-email/result',method='POST',sendError=$json.error,uncertain=Boolean(sendError),body={eventId:claim.event.eventId,runId:claim.run.runId,idempotencyKey:claim.run.idempotencyKey,workerId:source.workerId,n8nExecutionId:source.executionId,notificationId:delivery.notificationId,outcome:uncertain?'DELIVERY_UNCERTAIN':'SENT',providerReference:uncertain?null:($json.messageId||delivery.messageKey),errorCode:uncertain?'EMAIL_DELIVERY_UNCERTAIN':'',errorMessage:uncertain?'SMTP delivery outcome could not be confirmed.': '',retryable:false},text=JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`${method}\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;const result=await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method,headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',c=>value+=c);res.on('end',()=>resolve({status:res.statusCode,body:value?JSON.parse(value):null}));});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});if(result.status<200||result.status>=300)throw new Error('WELCOME_RESULT_REJECTED');return[{json:{outcome:uncertain?'WELCOME_DELIVERY_UNCERTAIN':'WELCOME_SENT',result:result.body}}];"
+      },
+      "id": "cfce108c-8f2d-49af-87d0-08c8beb13020",
+      "name": "Record Welcome Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1600, 200]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": { "main": [[{ "node": "Claim One Event", "type": "main", "index": 0 }]] },
+    "Every Minute": { "main": [[{ "node": "Claim One Event", "type": "main", "index": 0 }]] },
+    "Claim One Event": { "main": [[{ "node": "Event Claimed?", "type": "main", "index": 0 }]] },
+    "Event Claimed?": {
+      "main": [[{ "node": "Load Event Context", "type": "main", "index": 0 }], []]
+    },
+    "Load Event Context": {
+      "main": [[{ "node": "Route Approved Event Type", "type": "main", "index": 0 }]]
+    },
+    "Route Approved Event Type": {
+      "main": [
+        [{ "node": "Initialize Task Snapshots", "type": "main", "index": 0 }],
+        [{ "node": "Reserve Provider Attempt", "type": "main", "index": 0 }],
+        [{ "node": "Begin Welcome Delivery", "type": "main", "index": 0 }]
+      ]
+    },
+    "Reserve Provider Attempt": {
+      "main": [[{ "node": "Provider Execution Authorized?", "type": "main", "index": 0 }]]
+    },
+    "Provider Execution Authorized?": {
+      "main": [[{ "node": "Execute Local Sandbox Provider", "type": "main", "index": 0 }], []]
+    },
+    "Execute Local Sandbox Provider": {
+      "main": [[{ "node": "Provider Completed?", "type": "main", "index": 0 }]]
+    },
+    "Provider Completed?": {
+      "main": [
+        [{ "node": "Record Task Completion", "type": "main", "index": 0 }],
+        [{ "node": "Record Provider Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Begin Welcome Delivery": {
+      "main": [[{ "node": "Send Frozen Welcome Email", "type": "main", "index": 0 }]]
+    },
+    "Send Frozen Welcome Email": {
+      "main": [[{ "node": "Record Welcome Result", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "phase3-automation-error-handler",
+    "saveManualExecutions": true
+  },
+  "versionId": "71902054-2828-4d63-8329-e4196afbf1ee",
+  "meta": { "templateCredsSetupCompleted": false },
+  "id": "phase4-internal-onboarding",
+  "tags": []
+}

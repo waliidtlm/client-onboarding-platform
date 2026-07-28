@@ -6,7 +6,7 @@ export type AutomationEventEnvelope = Readonly<{
   occurredAt: string;
   correlationId: string;
   schemaVersion: number;
-  payload: Record<string, never>;
+  payload: Readonly<Record<string, string>>;
 }>;
 
 export type AutomationRunClaim = Readonly<{
@@ -28,22 +28,41 @@ export type AutomationClaimResult =
       run: AutomationRunClaim;
     }>;
 
-export type AutomationContextResult = Readonly<{
+type AutomationContextBase = Readonly<{
   eventId: string;
   runId: string;
-  eventType: "ONBOARDING_ACTIVATED";
+  eventType: "ONBOARDING_ACTIVATED" | "PROVISIONING_TASK_REQUESTED" | "WELCOME_EMAIL_REQUESTED";
   schemaVersion: 1;
   correlationId: string;
-  onboarding: Readonly<{
-    id: string;
-    status: string;
-    activatedAt: string;
-    clientCompanyName: string;
-    purchasedPackageName: string;
-    projectManagerId: string | null;
-    businessVersion: number;
-  }>;
 }>;
+
+export type AutomationContextResult = AutomationContextBase &
+  Readonly<{
+    onboarding: Readonly<{
+      id: string;
+      status: string;
+      activatedAt: string | null;
+      clientCompanyName: string;
+      purchasedPackageName: string;
+      projectManagerId: string | null;
+      businessVersion: number;
+    }>;
+    task?: Readonly<{
+      id: string;
+      onboardingId: string;
+      status: string;
+      version: number;
+      attemptCount: number;
+      maxAttempts: number;
+      automationKey: string;
+      idempotencyKey: string;
+    }>;
+    notification?: Readonly<{
+      id: string;
+      status: string;
+      recipient: string;
+    }>;
+  }>;
 
 export type AutomationCompletionResult = Readonly<{
   eventId: string;

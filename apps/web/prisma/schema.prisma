@@ -154,8 +154,26 @@ enum NotificationChannel {
 
 enum NotificationStatus {
   PENDING
+  SENDING
   SENT
   FAILED
+  DELIVERY_UNCERTAIN
+}
+
+enum ProvisioningTaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  MANUAL_REVIEW_REQUIRED
+  MANUALLY_ACCEPTED
+}
+
+enum ProvisioningTaskAttemptStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  TIMED_OUT
 }
 
 model User {
@@ -177,6 +195,9 @@ model User {
   openedCommercialExceptions       CommercialException[] @relation("CommercialExceptionCreatedBy")
   resolvedCommercialExceptions     CommercialException[] @relation("CommercialExceptionResolvedBy")
   auditEvents                      AuditEvent[]           @relation("AuditActor")
+  manuallyAcceptedProvisioningTasks ProvisioningTask[]    @relation("ProvisioningTaskManuallyAcceptedBy")
+  internalReadinessApprovals       Onboarding[]           @relation("InternalReadinessApprovedBy")
+  resolvedAutomationEvents         AutomationEvent[]      @relation("AutomationEventResolvedBy")
 }
 
 model Client {
@@ -217,6 +238,7 @@ model PackageProvisioningTemplate {
   createdAt        DateTime       @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime       @updatedAt @db.Timestamptz(3)
   servicePackage   ServicePackage @relation(fields: [servicePackageId], references: [id], onDelete: Cascade)
+  provisioningTasks ProvisioningTask[]
 
   @@unique([servicePackageId, sequence])
   @@unique([servicePackageId, automationKey])
@@ -290,6 +312,11 @@ model Onboarding {
   auditEvents                 AuditEvent[]
   automationEvents            AutomationEvent[]
   notificationLogs            NotificationLog[]
+  provisioningTasks           ProvisioningTask[]
+  internalReadinessApprovedById String?                   @db.Uuid
+  internalReadinessApprovedAt DateTime?                   @db.Timestamptz(3)
+  internalReadinessNote       String?
+  internalReadinessApprovedBy User?                       @relation("InternalReadinessApprovedBy", fields: [internalReadinessApprovedById], references: [id], onDelete: Restrict)
 
   @@index([status, createdAt])
   @@index([projectManagerId])
@@ -440,12 +467,16 @@ model AutomationEvent {
   claimedAt          DateTime?              @db.Timestamptz(3)
   leaseExpiresAt     DateTime?              @db.Timestamptz(3)
   currentRunId       String?                @unique @db.Uuid
+  resolvedById       String?                @db.Uuid
+  resolvedAt         DateTime?              @db.Timestamptz(3)
+  resolutionCode     String?                @db.VarChar(100)
   createdAt          DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
   onboarding         Onboarding             @relation(fields: [aggregateId], references: [id], onDelete: Restrict)
   runs               AutomationRun[]        @relation("AutomationEventRuns")
   currentRun         AutomationRun?         @relation("CurrentAutomationRun", fields: [currentRunId], references: [id], onDelete: Restrict)
   claimRequests      AutomationClaimRequest[]
+  resolvedBy         User?                  @relation("AutomationEventResolvedBy", fields: [resolvedById], references: [id], onDelete: Restrict)
 
   @@index([status, availableAt, createdAt])
   @@index([aggregateType, aggregateId])
@@ -474,6 +505,7 @@ model AutomationRun {
   createdAt             DateTime                         @default(now()) @db.Timestamptz(3)
   automationEvent       AutomationEvent                  @relation("AutomationEventRuns", fields: [automationEventId], references: [id], onDelete: Restrict)
   currentForEvent       AutomationEvent?                 @relation("CurrentAutomationRun")
+  provisioningAttempts  ProvisioningTaskAttempt[]
 
   @@unique([automationEventId, attemptNumber])
   @@unique([workerId, n8nExecutionId])
@@ -502,10 +534,89 @@ model NotificationLog {
   channel            NotificationChannel
   status             NotificationStatus
   idempotencyKey     String              @unique @db.VarChar(255)
+  senderKey          String              @db.VarChar(100)
+  senderName         String              @db.VarChar(200)
+  senderAddress      String              @db.VarChar(320)
+  subject            String              @db.VarChar(500)
+  textContent        String
+  htmlContent        String?
+  templateVersion    Int
+  messageKey         String              @unique @db.VarChar(255)
+  attemptCount       Int                 @default(0)
+  deliveryAttemptKey String?             @unique @db.VarChar(255)
+  deliveryStartedAt  DateTime?           @db.Timestamptz(3)
+  providerReference  String?             @db.VarChar(500)
   sentAt             DateTime?           @db.Timestamptz(3)
   failureReason      String?             @db.VarChar(1000)
   createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
   onboarding         Onboarding          @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
 
   @@index([onboardingId, createdAt])
+}
+
+model ProvisioningTask {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  onboardingId             String                 @db.Uuid
+  templateId               String                 @db.Uuid
+  name                     String                 @db.VarChar(200)
+  description              String
+  sequence                 Int
+  isRequired               Boolean                @default(true)
+  automationKey            String                 @db.VarChar(100)
+  status                   ProvisioningTaskStatus @default(PENDING)
+  attemptCount             Int                    @default(0)
+  maxAttempts              Int
+  lastErrorCode            String?                @db.VarChar(100)
+  lastErrorMessage         String?                @db.VarChar(1000)
+  externalReference        String?                @db.VarChar(500)
+  idempotencyKey           String                 @unique @db.VarChar(255)
+  startedAt                DateTime?               @db.Timestamptz(3)
+  completedAt              DateTime?               @db.Timestamptz(3)
+  manuallyAcceptedById     String?                @db.Uuid
+  manuallyAcceptedAt       DateTime?               @db.Timestamptz(3)
+  manualAcceptanceReason   String?
+  version                  Int                    @default(1)
+  createdAt                DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime               @updatedAt @db.Timestamptz(3)
+  onboarding               Onboarding             @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  template                 PackageProvisioningTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  manuallyAcceptedBy       User?                  @relation("ProvisioningTaskManuallyAcceptedBy", fields: [manuallyAcceptedById], references: [id], onDelete: Restrict)
+  attempts                 ProvisioningTaskAttempt[]
+  sandboxResource          SandboxProvisionedResource?
+
+  @@unique([onboardingId, templateId])
+  @@unique([onboardingId, sequence])
+  @@index([onboardingId, status, sequence])
+}
+
+model ProvisioningTaskAttempt {
+  id                 String                        @id @default(uuid()) @db.Uuid
+  provisioningTaskId String                        @db.Uuid
+  automationRunId    String                        @unique @db.Uuid
+  attemptNumber      Int
+  status             ProvisioningTaskAttemptStatus @default(IN_PROGRESS)
+  retryable          Boolean?
+  errorCode          String?                       @db.VarChar(100)
+  errorMessage       String?                       @db.VarChar(1000)
+  externalReference  String?                       @db.VarChar(500)
+  startedAt          DateTime                      @db.Timestamptz(3)
+  completedAt        DateTime?                     @db.Timestamptz(3)
+  createdAt          DateTime                      @default(now()) @db.Timestamptz(3)
+  provisioningTask   ProvisioningTask              @relation(fields: [provisioningTaskId], references: [id], onDelete: Restrict)
+  automationRun      AutomationRun                 @relation(fields: [automationRunId], references: [id], onDelete: Restrict)
+
+  @@unique([provisioningTaskId, attemptNumber])
+  @@index([provisioningTaskId, createdAt])
+}
+
+model SandboxProvisionedResource {
+  id                 String           @id @default(uuid()) @db.Uuid
+  provisioningTaskId String           @unique @db.Uuid
+  idempotencyKey     String           @unique @db.VarChar(255)
+  resourceType       String           @db.VarChar(100)
+  displayName        String           @db.VarChar(300)
+  externalReference  String           @unique @db.VarChar(500)
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  provisioningTask   ProvisioningTask @relation(fields: [provisioningTaskId], references: [id], onDelete: Restrict)
 }

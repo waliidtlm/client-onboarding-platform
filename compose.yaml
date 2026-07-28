@@ -117,6 +117,18 @@ services:
       retries: 18
       start_period: 30s
 
+  mailpit:
+    image: axllent/mailpit:v1.27.8
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
   web:
     image: client-onboarding-platform-web:0.1.0
     build:
@@ -135,6 +147,7 @@ services:
       AUTOMATION_LEASE_SECONDS: ${AUTOMATION_LEASE_SECONDS:-300}
       AUTOMATION_MAX_ATTEMPTS: ${AUTOMATION_MAX_ATTEMPTS:-5}
       AUTOMATION_RETRY_BASE_SECONDS: ${AUTOMATION_RETRY_BASE_SECONDS:-30}
+      PROVISIONING_TASK_MAX_ATTEMPTS: ${PROVISIONING_TASK_MAX_ATTEMPTS:-3}
       NEXTAUTH_URL: http://127.0.0.1:${WEB_PORT:-3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:

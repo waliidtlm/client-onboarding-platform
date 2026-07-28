@@ -31,6 +31,10 @@ export default defineConfig({
     command: `pnpm exec next dev --hostname 127.0.0.1 --port ${port}`,
     env: {
       AUTH_SECRET: process.env.AUTH_SECRET ?? "playwright-auth-secret-with-at-least-32-characters",
+      AUTOMATION_HMAC_SECRET:
+        process.env.AUTOMATION_HMAC_SECRET ?? "playwright-automation-hmac-secret-000000",
+      AUTOMATION_SERVICE_TOKEN:
+        process.env.AUTOMATION_SERVICE_TOKEN ?? "playwright-automation-service-token-000000",
       DATABASE_URL: testDatabaseUrl,
       LOG_LEVEL: "silent",
       NEXTAUTH_URL: baseURL,

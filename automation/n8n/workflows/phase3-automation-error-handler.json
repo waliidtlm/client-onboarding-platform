@@ -1,0 +1,46 @@
+{
+  "name": "Phase 3 Automation Error Handler",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "ae97a377-6bff-405b-a53f-3c318d0429cd",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst http = require('http');\nconst https = require('https');\n\nconst executionError = $json?.execution?.error;\nconst message = executionError?.message;\nif (message === 'AUTOMATION_FAILURE_ALREADY_REPORTED') {\n  return [{ json: { outcome: 'ALREADY_REPORTED' } }];\n}\nconst prefix = 'AUTOMATION_FAILURE_CONTEXT:';\nlet encodedContext = null;\nif (typeof message === 'string' && message.startsWith(prefix)) {\n  encodedContext = message.slice(prefix.length).split(' ')[0];\n} else if (executionError?.description === 'AUTOMATION_FAILURE_CONTEXT' && typeof message === 'string') {\n  encodedContext = message.split(' ')[0];\n} else if (typeof executionError?.stack === 'string') {\n  encodedContext = executionError.stack.match(/AUTOMATION_FAILURE_CONTEXT:([A-Za-z0-9_-]+)/)?.[1] || null;\n}\nif (!encodedContext) {\n  return [{ json: { outcome: 'SKIPPED', reason: 'RELIABLE_IDENTIFIERS_UNAVAILABLE' } }];\n}\n\nlet context;\ntry {\n  context = JSON.parse(Buffer.from(encodedContext, 'base64url').toString('utf8'));\n} catch {\n  throw new Error('AUTOMATION_FALLBACK_CONTEXT_INVALID');\n}\nconst required = ['eventId', 'runId', 'idempotencyKey', 'workerId', 'n8nExecutionId'];\nif (required.some((key) => typeof context[key] !== 'string' || context[key].length === 0)) {\n  throw new Error('AUTOMATION_FALLBACK_CONTEXT_INVALID');\n}\n\nconst baseUrl = $env.AUTOMATION_API_BASE_URL;\nconst serviceToken = $env.AUTOMATION_SERVICE_TOKEN;\nconst hmacSecret = $env.AUTOMATION_HMAC_SECRET;\nif (!baseUrl || !serviceToken || !hmacSecret) {\n  throw new Error('AUTOMATION_CONFIGURATION_INVALID');\n}\nconst path = '/api/internal/automation/failure';\nconst bodyText = JSON.stringify({\n  eventId: context.eventId,\n  runId: context.runId,\n  idempotencyKey: context.idempotencyKey,\n  workerId: context.workerId,\n  n8nExecutionId: context.n8nExecutionId,\n  failedNode: context.failedNode || 'Unknown node',\n  errorCode: 'TEMPORARY_PROVIDER_FAILURE',\n  errorMessage: 'The automation consumer failed and its direct failure report did not complete.',\n  classification: 'RETRYABLE',\n  reportedAt: new Date().toISOString(),\n});\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst bodyHash = crypto.createHash('sha256').update(bodyText).digest('hex');\nconst canonical = `POST\\n${path}\\n${timestamp}\\n${bodyHash}`;\nconst signature = `sha256=${crypto.createHmac('sha256', hmacSecret).update(canonical).digest('hex')}`;\nconst target = `${baseUrl}${path}`;\nconst transport = baseUrl.startsWith('https://') ? https : http;\nconst status = await new Promise((resolve, reject) => {\n  const request = transport.request(target, {\n    method: 'POST',\n    headers: {\n      authorization: `Bearer ${serviceToken}`,\n      'content-type': 'application/json',\n      'x-automation-timestamp': timestamp,\n      'x-automation-signature': signature,\n    },\n  }, (response) => {\n    response.resume();\n    response.on('end', () => resolve(response.statusCode || 0));\n  });\n  request.on('error', reject);\n  request.write(bodyText);\n  request.end();\n});\nif (status < 200 || status >= 300) throw new Error('AUTOMATION_FALLBACK_REPORT_REJECTED');\nreturn [{ json: { outcome: 'FAILURE_REPORTED', eventId: context.eventId, runId: context.runId } }];"
+      },
+      "id": "8e2ca684-df13-489d-8432-7332731c935c",
+      "name": "Report Reliable Failure Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [280, 0]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Report Reliable Failure Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4567850d-e260-4898-ad5b-cac3cfe670d9",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "phase3-automation-error-handler",
+  "tags": []
+}

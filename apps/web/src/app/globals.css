@@ -149,13 +149,60 @@ button:disabled {
 .commercial-form select,
 .commercial-form textarea,
 .inline-form input,
-.inline-form select {
+.inline-form select,
+.inline-form textarea {
   width: 100%;
   padding: 0.7rem;
   border: 1px solid #aeb8c5;
   border-radius: 0.5rem;
   background: white;
   font: inherit;
+}
+
+.provisioning-list {
+  display: grid;
+  gap: 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.provisioning-task {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-left: 0.35rem solid #94a3b8;
+  border-radius: 0.7rem;
+  background: #f8fafc;
+}
+
+.provisioning-task h3 {
+  margin: 0.2rem 0;
+}
+
+.task-sequence {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.status-completed,
+.status-manually_accepted {
+  border-left-color: #2e7d4f;
+}
+
+.status-in_progress {
+  border-left-color: var(--accent);
+}
+
+.status-manual_review_required {
+  border-left-color: var(--danger);
+}
+
+.manual-resolution-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 .commercial-form fieldset {

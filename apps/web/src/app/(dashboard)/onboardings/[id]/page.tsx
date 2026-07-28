@@ -7,12 +7,14 @@ import { CommercialExceptionControls } from "@/components/commercial/commercial-
 import { CommercialGatePanel } from "@/components/commercial/commercial-gate-panel";
 import { ContractControls } from "@/components/commercial/contract-controls";
 import { PaymentControls } from "@/components/commercial/payment-controls";
+import { ProjectManagerAssignment } from "@/components/provisioning/project-manager-assignment";
+import { ProvisioningPanel } from "@/components/provisioning/provisioning-panel";
 import { can, Permission, requirePermission } from "@/lib/auth/authorization";
-import { getOnboardingDetail } from "@/lib/onboardings/queries";
+import { getOnboardingDetail, listActiveProjectManagers } from "@/lib/onboardings/queries";
 
 type OnboardingDetailPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ success?: string }>;
+  searchParams: Promise<{ success?: string; error?: string }>;
 };
 
 export default async function OnboardingDetailPage({
@@ -20,9 +22,14 @@ export default async function OnboardingDetailPage({
   searchParams,
 }: OnboardingDetailPageProps) {
   const { id } = await params;
-  const { success } = await searchParams;
+  const { success, error } = await searchParams;
   const staff = await requirePermission(Permission.ONBOARDING_READ, `/onboardings/${id}`);
-  const onboarding = await getOnboardingDetail(id, staff);
+  const [onboarding, projectManagers] = await Promise.all([
+    getOnboardingDetail(id, staff),
+    can(Permission.PROJECT_MANAGER_ASSIGN, staff.role)
+      ? listActiveProjectManagers()
+      : Promise.resolve([]),
+  ]);
 
   if (!onboarding) notFound();
 
@@ -36,6 +43,7 @@ export default async function OnboardingDetailPage({
       <h1>{onboarding.client}</h1>
       <p className="lead">{onboarding.servicePackage}</p>
       {success ? <p className="notice notice-success">{success}</p> : null}
+      {error ? <p className="notice notice-error">{error}</p> : null}
 
       <div className="summary-grid">
         <article>
@@ -86,6 +94,17 @@ export default async function OnboardingDetailPage({
             <dd>{onboarding.version}</dd>
           </div>
         </dl>
+        {can(Permission.PROJECT_MANAGER_ASSIGN, staff.role) &&
+        ["READY_FOR_ONBOARDING", "INTERNAL_SETUP", "INTERNAL_REVIEW"].includes(
+          onboarding.status,
+        ) ? (
+          <ProjectManagerAssignment
+            onboardingId={id}
+            version={onboarding.version}
+            currentProjectManagerId={onboarding.projectManagerDetail?.id ?? null}
+            projectManagers={projectManagers}
+          />
+        ) : null}
         {onboarding.salesHandoffStatus === "INCOMPLETE" &&
         can(Permission.SALES_HANDOFF_MUTATE, staff.role) ? (
           <p>
@@ -190,6 +209,40 @@ export default async function OnboardingDetailPage({
           <p>Your role does not permit access to commercial details.</p>
         </article>
       )}
+
+      {onboarding.provisioning ? (
+        <>
+          <ProvisioningPanel
+            onboardingId={id}
+            onboardingStatus={onboarding.status}
+            onboardingVersion={onboarding.version}
+            tasks={onboarding.provisioning.tasks}
+            readiness={onboarding.provisioning.readiness}
+            canResolve={
+              can(Permission.PROVISIONING_RESOLVE, staff.role) &&
+              (staff.role !== "PROJECT_MANAGER" || onboarding.projectManagerDetail?.id === staff.id)
+            }
+            canApprove={
+              can(Permission.INTERNAL_READINESS_APPROVE, staff.role) &&
+              (staff.role !== "PROJECT_MANAGER" || onboarding.projectManagerDetail?.id === staff.id)
+            }
+            canResolveEmail={can(Permission.EMAIL_UNCERTAINTY_RESOLVE, staff.role)}
+            internalReadinessApprovedAt={onboarding.provisioning.internalReadinessApprovedAt}
+            welcomeEmail={onboarding.provisioning.welcomeEmail}
+          />
+          <article className="detail-card">
+            <h2>Phase 4 audit timeline</h2>
+            <AuditTimeline events={onboarding.provisioning.auditEvents} />
+          </article>
+        </>
+      ) : ["READY_FOR_ONBOARDING", "INTERNAL_SETUP", "INTERNAL_REVIEW"].includes(
+          onboarding.status,
+        ) ? (
+        <article className="detail-card restricted" data-testid="provisioning-restricted">
+          <h2>Provisioning</h2>
+          <p>Your role or assignment does not permit access to provisioning details.</p>
+        </article>
+      ) : null}
 
       <article className="detail-card">
         <h2>Package configuration</h2>

@@ -1,6 +1,7 @@
 import { can, Permission, type CurrentStaff } from "@/lib/auth/authorization";
 import { prisma } from "@/lib/database";
 import { formatMoney, presentStoredStatus, type StoredStatus } from "@/lib/onboardings/presenter";
+import { calculateProvisioningReadiness } from "@/domain/provisioning/readiness";
 
 function serializeBaseOnboarding(
   onboarding: StoredStatus & {
@@ -43,7 +44,7 @@ function serializeBaseOnboarding(
   };
 }
 
-export async function listOnboardings() {
+export async function listOnboardings(staff?: CurrentStaff) {
   const records = await prisma.onboarding.findMany({
     orderBy: { createdAt: "desc" },
     select: {
@@ -61,11 +62,32 @@ export async function listOnboardings() {
       activationInvoice: {
         select: { status: true, invoiceNumber: true, dueAt: true },
       },
-      projectManager: { select: { name: true } },
+      projectManager: { select: { id: true, name: true } },
     },
   });
-
-  return records.map(serializeBaseOnboarding);
+  const base = records.map(serializeBaseOnboarding);
+  if (!staff || !can(Permission.PROVISIONING_READ, staff.role)) return base;
+  const visibleIds = records
+    .filter((record) => staff.role !== "PROJECT_MANAGER" || record.projectManager?.id === staff.id)
+    .map((record) => record.id);
+  const manualReviews = await prisma.provisioningTask.findMany({
+    where: {
+      onboardingId: { in: visibleIds },
+      status: "MANUAL_REVIEW_REQUIRED",
+    },
+    orderBy: { sequence: "asc" },
+    select: { onboardingId: true, name: true, isRequired: true },
+  });
+  return base.map((item) => {
+    const blocker = manualReviews.find((task) => task.onboardingId === item.id && task.isRequired);
+    return blocker
+      ? {
+          ...item,
+          currentBlocker: "Provisioning requires manual review",
+          nextAction: `Resolve required task: ${blocker.name}`,
+        }
+      : item;
+  });
 }
 
 const detailSelect = {
@@ -110,7 +132,7 @@ const detailSelect = {
       },
     },
   },
-  projectManager: { select: { name: true } },
+  projectManager: { select: { id: true, name: true, email: true, isActive: true } },
   salesHandoff: { select: { newClientCompanyName: true } },
   activationInvoice: {
     select: { status: true, invoiceNumber: true, dueAt: true },
@@ -186,6 +208,12 @@ export async function getOnboardingDetail(id: string, staff: CurrentStaff) {
             },
           },
           auditEvents: {
+            where: {
+              AND: [
+                { action: { not: { startsWith: "PROVISIONING_" } } },
+                { action: { notIn: ["INTERNAL_READINESS_APPROVED", "WELCOME_EMAIL_SENT"] } },
+              ],
+            },
             orderBy: { createdAt: "desc" },
             take: 100,
             select: {
@@ -196,6 +224,97 @@ export async function getOnboardingDetail(id: string, staff: CurrentStaff) {
               previousValue: true,
               newValue: true,
               metadata: true,
+              createdAt: true,
+              actor: { select: { name: true } },
+            },
+          },
+        },
+      })
+    : null;
+
+  const mayReadProvisioning =
+    can(Permission.PROVISIONING_READ, staff.role) &&
+    (staff.role !== "PROJECT_MANAGER" || record.projectManager?.id === staff.id);
+  const phase4Record = mayReadProvisioning
+    ? await prisma.onboarding.findUniqueOrThrow({
+        where: { id },
+        select: {
+          internalReadinessApprovedAt: true,
+          internalReadinessNote: true,
+          welcomeEmailSentAt: true,
+          provisioningTasks: {
+            orderBy: { sequence: "asc" },
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              sequence: true,
+              isRequired: true,
+              automationKey: true,
+              status: true,
+              attemptCount: true,
+              maxAttempts: true,
+              lastErrorCode: true,
+              lastErrorMessage: true,
+              externalReference: true,
+              version: true,
+              manuallyAcceptedAt: true,
+              manualAcceptanceReason: true,
+              manuallyAcceptedBy: { select: { name: true } },
+              attempts: {
+                orderBy: { attemptNumber: "desc" },
+                select: {
+                  id: true,
+                  attemptNumber: true,
+                  status: true,
+                  retryable: true,
+                  errorCode: true,
+                  errorMessage: true,
+                  startedAt: true,
+                  completedAt: true,
+                },
+              },
+            },
+          },
+          notificationLogs: {
+            where: { notificationType: "WELCOME_EMAIL" },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              recipient: true,
+              attemptCount: true,
+              providerReference: true,
+              sentAt: true,
+              failureReason: true,
+            },
+          },
+          auditEvents: {
+            where: {
+              OR: [
+                { action: { startsWith: "PROVISIONING_" } },
+                {
+                  action: {
+                    in: [
+                      "PROJECT_MANAGER_ASSIGNED",
+                      "PROJECT_MANAGER_REASSIGNED",
+                      "INTERNAL_READINESS_APPROVED",
+                      "WELCOME_EMAIL_SENT",
+                      "WELCOME_EMAIL_DELIVERY_CONFIRMED",
+                      "WELCOME_EMAIL_RESEND_AUTHORIZED",
+                    ],
+                  },
+                },
+              ],
+            },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+            select: {
+              id: true,
+              actorType: true,
+              action: true,
+              entityType: true,
               createdAt: true,
               actor: { select: { name: true } },
             },
@@ -215,6 +334,7 @@ export async function getOnboardingDetail(id: string, staff: CurrentStaff) {
     commercialGateEvaluatedAt: record.commercialGateEvaluatedAt?.toISOString() ?? null,
     activationRequirementStatus: record.activationRequirementStatus,
     version: record.version,
+    projectManagerDetail: record.projectManager,
     clientContact: {
       name: record.client?.contactName ?? "Not supplied",
       email: record.client?.contactEmail ?? "Not supplied",
@@ -288,7 +408,44 @@ export async function getOnboardingDetail(id: string, staff: CurrentStaff) {
           })),
         }
       : null,
+    provisioning: phase4Record
+      ? {
+          readiness: calculateProvisioningReadiness(phase4Record.provisioningTasks),
+          internalReadinessApprovedAt:
+            phase4Record.internalReadinessApprovedAt?.toISOString() ?? null,
+          internalReadinessNote: phase4Record.internalReadinessNote,
+          welcomeEmailSentAt: phase4Record.welcomeEmailSentAt?.toISOString() ?? null,
+          tasks: phase4Record.provisioningTasks.map((task) => ({
+            ...task,
+            manuallyAcceptedAt: task.manuallyAcceptedAt?.toISOString() ?? null,
+            attempts: task.attempts.map((attempt) => ({
+              ...attempt,
+              startedAt: attempt.startedAt.toISOString(),
+              completedAt: attempt.completedAt?.toISOString() ?? null,
+            })),
+          })),
+          welcomeEmail: phase4Record.notificationLogs[0]
+            ? {
+                ...phase4Record.notificationLogs[0],
+                sentAt: phase4Record.notificationLogs[0].sentAt?.toISOString() ?? null,
+              }
+            : null,
+          auditEvents: phase4Record.auditEvents.map((event) => ({
+            ...event,
+            actorName: event.actor?.name ?? "System",
+            createdAt: event.createdAt.toISOString(),
+          })),
+        }
+      : null,
   };
+}
+
+export async function listActiveProjectManagers() {
+  return prisma.user.findMany({
+    where: { role: "PROJECT_MANAGER", isActive: true },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true },
+  });
 }
 
 export async function getSalesHandoffFormData(onboardingId?: string) {

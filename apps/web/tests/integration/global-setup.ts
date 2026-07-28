@@ -45,17 +45,30 @@ export async function prepareIntegrationDatabase(): Promise<void> {
 
   const repositoryRoot = path.resolve(import.meta.dirname, "../../../..");
   const executable = process.platform === "win32" ? "cmd.exe" : "pnpm";
+  const preserveDatabase = process.env.INTEGRATION_PRESERVE_DATABASE === "1";
+  const databaseCommand = preserveDatabase
+    ? "pnpm.cmd prisma migrate deploy --config prisma.test.config.ts"
+    : "pnpm.cmd db:reset:test";
   const args =
-    process.platform === "win32" ? ["/d", "/s", "/c", "pnpm.cmd db:reset:test"] : ["db:reset:test"];
-  const reset = spawnSync(executable, args, {
+    process.platform === "win32"
+      ? ["/d", "/s", "/c", databaseCommand]
+      : preserveDatabase
+        ? ["prisma", "migrate", "deploy", "--config", "prisma.test.config.ts"]
+        : ["db:reset:test"];
+  const databasePreparation = spawnSync(executable, args, {
     cwd: repositoryRoot,
     env: process.env,
     encoding: "utf8",
   });
 
-  if (reset.status !== 0) {
+  if (databasePreparation.status !== 0) {
     throw new Error(
-      `Test database reset failed: ${reset.error?.message ?? reset.stderr ?? reset.stdout ?? "unknown error"}`,
+      `Test database preparation failed: ${
+        databasePreparation.error?.message ??
+        databasePreparation.stderr ??
+        databasePreparation.stdout ??
+        "unknown error"
+      }`,
     );
   }
 

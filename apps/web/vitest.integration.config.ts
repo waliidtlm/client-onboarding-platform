@@ -18,6 +18,8 @@ if (process.env.TEST_DATABASE_URL) {
 }
 
 process.env.AUTH_SECRET ??= "integration-auth-secret-with-at-least-32-characters";
+process.env.AUTOMATION_HMAC_SECRET ??= "integration-automation-hmac-secret-000000";
+process.env.AUTOMATION_SERVICE_TOKEN ??= "integration-automation-service-token-000000";
 process.env.NEXTAUTH_URL ??= "http://127.0.0.1:3100";
 process.env.TEST_STAFF_PASSWORD ??= "fictional-integration-staff-password-2026";
 

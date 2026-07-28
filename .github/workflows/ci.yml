@@ -25,6 +25,12 @@ env:
   N8N_DB_USER: ci_n8n_user
   N8N_DB_PASSWORD: CI_ONLY_n8n_password_not_a_secret
   AUTH_SECRET: CI_ONLY_auth_secret_not_a_real_secret_000000000000
+  AUTOMATION_SERVICE_TOKEN: CI_ONLY_automation_service_token_not_a_secret
+  AUTOMATION_HMAC_SECRET: CI_ONLY_automation_hmac_secret_not_a_secret_0000
+  AUTOMATION_SIGNATURE_MAX_AGE_SECONDS: 300
+  AUTOMATION_LEASE_SECONDS: 300
+  AUTOMATION_MAX_ATTEMPTS: 5
+  AUTOMATION_RETRY_BASE_SECONDS: 30
   NEXTAUTH_URL: http://127.0.0.1:3100
   TEST_STAFF_PASSWORD: CI_ONLY_fictional_staff_password
 

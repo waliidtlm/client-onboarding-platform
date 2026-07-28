@@ -25,6 +25,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # These non-secret placeholders exist only in the discarded build stage.
 ENV DATABASE_URL="postgresql://build-only@127.0.0.1:5432/onboarding_app"
 ENV AUTH_SECRET="build-only-placeholder-not-used-at-runtime"
+ENV AUTOMATION_SERVICE_TOKEN="build-only-automation-token-not-used-runtime"
+ENV AUTOMATION_HMAC_SECRET="build-only-automation-hmac-not-used-runtime"
 ENV NEXTAUTH_URL="http://127.0.0.1:3000"
 
 RUN pnpm --filter @client-onboarding/web build

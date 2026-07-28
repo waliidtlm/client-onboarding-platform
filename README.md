@@ -1,11 +1,10 @@
 # Client Onboarding Platform
 
-Production-minded internal client onboarding platform supported by n8n.
+Production-minded internal client onboarding platform with durable n8n orchestration.
 
-Phase 2 adds the application-owned commercial workflow: structured Sales handoff, contract
-versioning, Finance-owned invoice issuance, payment verification, deterministic Commercial Gate,
-exactly-once onboarding activation, and an append-only audit timeline. n8n and external
-automation remain deferred to Phase 3.
+Phase 4 keeps the application as the business authority and adds sequential provisioning,
+Project Manager ownership, internal readiness approval, frozen welcome-email delivery, explicit
+SMTP ambiguity handling, Mailpit, and a retained inactive Phase 3 consumer for evidence.
 
 ## Phase 1 behavior
 
@@ -31,11 +30,50 @@ automation remain deferred to Phase 3.
 - Important Phase 2 mutations write whitelisted, append-only AuditEvent records.
 - Delivery cannot read commercial records, audit details, or mutation controls.
 
+## Phase 3 behavior
+
+- Activation and its `ONBOARDING_ACTIVATED` event commit in the same PostgreSQL transaction.
+- Workers claim one event through an authenticated API; n8n never reads the application database.
+- A claim request UUID has a retained 24-hour result, including an explicit empty result.
+- Context access is bound to the event, current run, worker, idempotency key, and live lease.
+- Callbacks and failure reports are idempotent only when their normalized terminal result matches.
+- Retryable failures use bounded backoff, operator-remediable failures stop in `FAILED`, and
+  permanent or exhausted failures stop in `DEAD_LETTER`.
+- An Admin-only recovery screen revalidates eligibility before authorizing one extra attempt.
+- Terminal automation runs and activation events are protected from deletion at the database
+  layer. Terminal runs cannot be rewritten.
+- n8n receives only its own database credentials and dedicated API-signing credentials.
+
+## Phase 4 behavior
+
+- Commercial activation snapshots the purchased package's provisioning templates after an active
+  Project Manager is assigned.
+- Each task has one durable `PROVISIONING_TASK_REQUESTED:{taskId}:v1` event. Automatic and manual
+  retries reuse it.
+- Event attempts count worker delivery; provisioning attempts count only provider executions
+  reserved after task start.
+- Tasks execute in sequence. An optional task must be attempted; only its terminal manual-review
+  state may allow later work to continue.
+- Provider attempts are append-only and become `COMPLETED`, `FAILED`, or `TIMED_OUT`. Late results
+  cannot change terminal attempts.
+- The bundled provider creates only application-owned **Local sandbox resource** records with
+  stable `sandbox://` references. It does not provision Google Drive, ClickUp, Slack, CRM, or any
+  other real service.
+- Required tasks must complete or be manually accepted before internal review. Assigned active
+  Project Managers or Admins approve readiness.
+- Approval freezes one `.test` recipient, sender, subject, body, template version, and message key
+  before creating `WELCOME_EMAIL_REQUESTED`.
+- Email delivery distinguishes `PENDING`, `SENDING`, `SENT`, `FAILED`, and
+  `DELIVERY_UNCERTAIN`. Ambiguous delivery requires an Admin to confirm receipt or authorize one
+  audited resend.
+- The PM dashboard is the manual-review notification surface. Phase 4 sends no internal alert
+  email.
+
 ## Architecture boundary
 
-- PostgreSQL is the future source of business truth.
+- PostgreSQL is the source of business truth.
 - The Next.js application will own business-state transitions.
-- n8n will orchestrate external side effects through application APIs in later phases.
+- n8n orchestrates through narrow application-owned APIs and does not make business decisions.
 - n8n has a separate database and cannot connect to the application database.
 
 ## Prerequisites
@@ -75,6 +113,11 @@ Add the Phase 1 variables from `.env.example` to an older Phase 0 `.env`. In par
 - one local-only `DEMO_STAFF_PASSWORD`;
 - `WEB_PORT` and a matching host URL.
 
+Phase 3 also requires independent random values of at least 32 characters for
+`AUTOMATION_SERVICE_TOKEN` and `AUTOMATION_HMAC_SECRET`. These are service authentication
+credentials, not idempotency keys. See
+[automation/n8n/README.md](automation/n8n/README.md) for import and activation instructions.
+
 The demo password is intentionally shared by fictional users for a repeatable portfolio
 demonstration. It must never be reused outside local development and is never stored in plaintext
 in PostgreSQL.
@@ -87,10 +130,10 @@ pnpm.cmd exec playwright install chromium
 
 ## Run locally
 
-Start PostgreSQL and n8n:
+Start PostgreSQL, n8n, and Mailpit:
 
 ```powershell
-docker compose --env-file .env up -d postgres n8n
+docker compose --env-file .env up -d postgres n8n mailpit
 ```
 
 For an existing Phase 0 PostgreSQL volume, add the Phase 1 roles and databases without deleting
@@ -123,6 +166,9 @@ The host web port comes from `WEB_PORT`. If the default is occupied, set it to `
 development wrapper derives `NEXTAUTH_URL` from that same value. Playwright uses
 `PLAYWRIGHT_PORT`, so its server URL and browser base URL always match.
 
+Mailpit's local inbox is `http://127.0.0.1:8025`. Its SMTP listener is available only inside
+Compose at `mailpit:1025`.
+
 ## Fictional staff accounts
 
 The seed creates one account for each approved role:
@@ -146,6 +192,24 @@ rejection.
 - `GET /api/ready` executes `SELECT 1` against PostgreSQL. It returns `503` without exposing
   connection details when PostgreSQL is unavailable.
 - n8n exposes its built-in health endpoint at `GET /healthz`.
+- `POST /api/internal/automation/claim` leases one eligible event or returns `204`.
+- `GET /api/internal/automation/events/:eventId/context` returns minimal current-run context.
+- `POST /api/internal/automation/events/:eventId/callback` records a matching completion.
+- `POST /api/internal/automation/events/:eventId/failure` records a matching classified failure.
+- `POST /api/internal/automation/provisioning/initialize` snapshots package tasks.
+- `POST /api/internal/automation/provisioning/tasks/:taskId/start` reserves one provider attempt.
+- `POST /api/internal/automation/provisioning/tasks/:taskId/execute` invokes the Local sandbox
+  resource adapter.
+- `POST /api/internal/automation/provisioning/tasks/:taskId/complete` and `/failure` record the
+  bound attempt result.
+- `POST /api/internal/automation/welcome-email/begin` returns frozen delivery data and marks the
+  notification sending.
+- `POST /api/internal/automation/welcome-email/result` records sent, rejected, or uncertain
+  delivery.
+
+All internal automation endpoints require a dedicated bearer token plus a timestamped HMAC over
+the exact method, path and query, timestamp, and raw-body hash. Authentication runs before JSON
+parsing or database work.
 
 Build-time validation and runtime readiness are intentionally separate:
 
@@ -162,6 +226,7 @@ Build-time validation and runtime readiness are intentionally separate:
 | `pnpm.cmd format`           | Apply Prettier formatting.                                   |
 | `pnpm.cmd format:check`     | Check formatting without changing files.                     |
 | `pnpm.cmd lint`             | Run ESLint with zero warnings allowed.                       |
+| `pnpm.cmd n8n:validate`     | Validate the committed inactive n8n workflow exports.        |
 | `pnpm.cmd typecheck`        | Generate Next.js route types and run strict TypeScript.      |
 | `pnpm.cmd test`             | Run Vitest unit and Route Handler tests.                     |
 | `pnpm.cmd test:integration` | Run real PostgreSQL integration and role-isolation tests.    |
@@ -175,6 +240,11 @@ Build-time validation and runtime readiness are intentionally separate:
 | `pnpm.cmd db:deploy`        | Apply committed migrations with migration credentials.       |
 | `pnpm.cmd db:seed`          | Upsert the fictional Phase 1 demonstration records.          |
 | `pnpm.cmd db:validate`      | Validate the Prisma schema.                                  |
+
+Integration tests normally reset the isolated `onboarding_test` database and therefore require
+explicit Prisma reset consent. To apply outstanding test migrations without deleting retained
+test rows, set `INTEGRATION_PRESERVE_DATABASE=1` for that run. Never point either mode at a
+production database.
 
 ## Database isolation
 
@@ -214,8 +284,8 @@ monitoring, and an n8n editor that is not publicly exposed.
 
 ## Current limits
 
-This is Phase 2. It does not upload payment evidence files or integrate with accounting,
-e-signature, CRM, or payment providers. Payment evidence is represented by an external reference.
-Automation events, n8n callbacks, provisioning, welcome email, client requirements, kickoff, and
-delivery handoff do not exist yet. Phase 3 will add durable automation-event infrastructure
-without moving commercial decisions out of the application.
+Phase 4 demonstrates orchestration with application-owned Local sandbox resources and local
+Mailpit SMTP only. Real provider adapters may later be n8n nodes, n8n subworkflows, or dedicated
+provider services while preserving the same application callback contract. It does not upload
+payment evidence or integrate with accounting, e-signature, cloud storage, project management,
+CRM, production email, or payment providers. Phase 5 is intentionally not implemented.

@@ -120,6 +120,44 @@ enum AuditActorType {
   SYSTEM
 }
 
+enum AutomationEventStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  DEAD_LETTER
+}
+
+enum AutomationRunStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+  TIMED_OUT
+}
+
+enum AutomationFailureClassification {
+  RETRYABLE
+  OPERATOR_REMEDIABLE
+  PERMANENT
+}
+
+enum AutomationClaimOutcome {
+  PENDING
+  CLAIMED
+  EMPTY
+  REJECTED
+}
+
+enum NotificationChannel {
+  EMAIL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 model User {
   id                               String                @id @default(uuid()) @db.Uuid
   name                             String                @db.VarChar(200)
@@ -250,6 +288,8 @@ model Onboarding {
   activationInvoice           Invoice?                    @relation("ActivationInvoice", fields: [activationInvoiceId], references: [id], onDelete: Restrict)
   commercialExceptions        CommercialException[]
   auditEvents                 AuditEvent[]
+  automationEvents            AutomationEvent[]
+  notificationLogs            NotificationLog[]
 
   @@index([status, createdAt])
   @@index([projectManagerId])
@@ -377,4 +417,95 @@ model AuditEvent {
 
   @@index([onboardingId, createdAt])
   @@index([correlationId])
+}
+
+model AutomationEvent {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  eventType          String                 @db.VarChar(100)
+  aggregateType      String                 @db.VarChar(100)
+  aggregateId        String                 @db.Uuid
+  payload            Json                   @default("{}")
+  schemaVersion      Int
+  status             AutomationEventStatus  @default(PENDING)
+  attemptCount       Int                    @default(0)
+  maxAttempts        Int
+  availableAt        DateTime               @db.Timestamptz(3)
+  occurredAt         DateTime               @db.Timestamptz(3)
+  processedAt        DateTime?              @db.Timestamptz(3)
+  lastErrorCode      String?                @db.VarChar(100)
+  lastError          String?                @db.VarChar(1000)
+  correlationId      String                 @db.Uuid
+  deduplicationKey   String                 @unique @db.VarChar(255)
+  claimedBy          String?                @db.VarChar(100)
+  claimedAt          DateTime?              @db.Timestamptz(3)
+  leaseExpiresAt     DateTime?              @db.Timestamptz(3)
+  currentRunId       String?                @unique @db.Uuid
+  createdAt          DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
+  onboarding         Onboarding             @relation(fields: [aggregateId], references: [id], onDelete: Restrict)
+  runs               AutomationRun[]        @relation("AutomationEventRuns")
+  currentRun         AutomationRun?         @relation("CurrentAutomationRun", fields: [currentRunId], references: [id], onDelete: Restrict)
+  claimRequests      AutomationClaimRequest[]
+
+  @@index([status, availableAt, createdAt])
+  @@index([aggregateType, aggregateId])
+  @@index([correlationId])
+  @@index([leaseExpiresAt])
+}
+
+model AutomationRun {
+  id                    String                           @id @default(uuid()) @db.Uuid
+  automationEventId     String                           @db.Uuid
+  workflowName          String                           @db.VarChar(200)
+  workerId              String                           @db.VarChar(100)
+  n8nExecutionId        String?                          @db.VarChar(100)
+  claimRequestId        String                           @unique @db.Uuid
+  idempotencyKey        String                           @unique @db.VarChar(255)
+  status                AutomationRunStatus              @default(PROCESSING)
+  attemptNumber         Int
+  startedAt             DateTime                         @db.Timestamptz(3)
+  completedAt           DateTime?                        @db.Timestamptz(3)
+  errorCode             String?                          @db.VarChar(100)
+  errorMessage          String?                          @db.VarChar(1000)
+  failedNode            String?                          @db.VarChar(200)
+  failureClassification AutomationFailureClassification?
+  failureReportedAt     DateTime?                        @db.Timestamptz(3)
+  resultReferences      Json?
+  createdAt             DateTime                         @default(now()) @db.Timestamptz(3)
+  automationEvent       AutomationEvent                  @relation("AutomationEventRuns", fields: [automationEventId], references: [id], onDelete: Restrict)
+  currentForEvent       AutomationEvent?                 @relation("CurrentAutomationRun")
+
+  @@unique([automationEventId, attemptNumber])
+  @@unique([workerId, n8nExecutionId])
+  @@index([automationEventId, createdAt])
+}
+
+model AutomationClaimRequest {
+  requestId         String                 @id @db.Uuid
+  workerId          String                 @db.VarChar(100)
+  workflowName      String                 @db.VarChar(200)
+  outcome           AutomationClaimOutcome @default(PENDING)
+  automationEventId String?                @db.Uuid
+  errorCode         String?                @db.VarChar(100)
+  expiresAt         DateTime               @db.Timestamptz(3)
+  createdAt         DateTime               @default(now()) @db.Timestamptz(3)
+  automationEvent   AutomationEvent?       @relation(fields: [automationEventId], references: [id], onDelete: Restrict)
+
+  @@index([expiresAt])
+}
+
+model NotificationLog {
+  id                 String              @id @default(uuid()) @db.Uuid
+  onboardingId       String              @db.Uuid
+  notificationType   String              @db.VarChar(100)
+  recipient          String              @db.VarChar(320)
+  channel            NotificationChannel
+  status             NotificationStatus
+  idempotencyKey     String              @unique @db.VarChar(255)
+  sentAt             DateTime?           @db.Timestamptz(3)
+  failureReason      String?             @db.VarChar(1000)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  onboarding         Onboarding          @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+
+  @@index([onboardingId, createdAt])
 }

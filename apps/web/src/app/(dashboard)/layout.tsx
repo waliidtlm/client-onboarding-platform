@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { SignOutControl } from "@/components/sign-out-control";
 import { Permission, requirePermission } from "@/lib/auth/authorization";
+import { Role } from "@/generated/prisma/client";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const staff = await requirePermission(Permission.DASHBOARD_READ);
@@ -19,6 +20,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         <nav aria-label="Primary navigation">
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/onboardings">Onboardings</Link>
+          {staff.role === Role.ADMIN ? <Link href="/automation-events">Automation</Link> : null}
         </nav>
         <div className="staff-summary">
           <span>{staff.name}</span>

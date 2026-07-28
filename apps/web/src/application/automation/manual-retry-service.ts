@@ -56,6 +56,24 @@ export async function retryAutomationEvent(
         ) {
           reject("INVALID_TRANSITION", "Only failed or dead-letter events can be retried.");
         }
+        if (event.eventType === "WELCOME_EMAIL_REQUESTED") {
+          const payload = event.payload as { notificationId?: string };
+          const notification = payload.notificationId
+            ? await tx.notificationLog.findUnique({ where: { id: payload.notificationId } })
+            : null;
+          if (notification?.status === "DELIVERY_UNCERTAIN") {
+            reject(
+              "EMAIL_DELIVERY_UNCERTAIN",
+              "Resolve the uncertain delivery before authorizing another email attempt.",
+            );
+          }
+        }
+        if (event.eventType !== "ONBOARDING_ACTIVATED") {
+          reject(
+            "INVALID_TRANSITION",
+            "Use the event-specific Phase 4 recovery action for this event.",
+          );
+        }
         if (event.currentRunId || event.claimedBy || event.leaseExpiresAt) {
           reject("AUTOMATION_EVENT_CONFLICT", "The event still has an active run.");
         }

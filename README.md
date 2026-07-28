@@ -2,9 +2,9 @@
 
 Production-minded internal client onboarding platform with durable n8n orchestration.
 
-Phase 3 keeps the application as the business authority and adds a transactional activation
-event, leased worker claims, immutable run history, authenticated callbacks, bounded retries,
-dead-letter recovery, and two inactive n8n workflow exports.
+Phase 4 keeps the application as the business authority and adds sequential provisioning,
+Project Manager ownership, internal readiness approval, frozen welcome-email delivery, explicit
+SMTP ambiguity handling, Mailpit, and a retained inactive Phase 3 consumer for evidence.
 
 ## Phase 1 behavior
 
@@ -43,6 +43,31 @@ dead-letter recovery, and two inactive n8n workflow exports.
 - Terminal automation runs and activation events are protected from deletion at the database
   layer. Terminal runs cannot be rewritten.
 - n8n receives only its own database credentials and dedicated API-signing credentials.
+
+## Phase 4 behavior
+
+- Commercial activation snapshots the purchased package's provisioning templates after an active
+  Project Manager is assigned.
+- Each task has one durable `PROVISIONING_TASK_REQUESTED:{taskId}:v1` event. Automatic and manual
+  retries reuse it.
+- Event attempts count worker delivery; provisioning attempts count only provider executions
+  reserved after task start.
+- Tasks execute in sequence. An optional task must be attempted; only its terminal manual-review
+  state may allow later work to continue.
+- Provider attempts are append-only and become `COMPLETED`, `FAILED`, or `TIMED_OUT`. Late results
+  cannot change terminal attempts.
+- The bundled provider creates only application-owned **Local sandbox resource** records with
+  stable `sandbox://` references. It does not provision Google Drive, ClickUp, Slack, CRM, or any
+  other real service.
+- Required tasks must complete or be manually accepted before internal review. Assigned active
+  Project Managers or Admins approve readiness.
+- Approval freezes one `.test` recipient, sender, subject, body, template version, and message key
+  before creating `WELCOME_EMAIL_REQUESTED`.
+- Email delivery distinguishes `PENDING`, `SENDING`, `SENT`, `FAILED`, and
+  `DELIVERY_UNCERTAIN`. Ambiguous delivery requires an Admin to confirm receipt or authorize one
+  audited resend.
+- The PM dashboard is the manual-review notification surface. Phase 4 sends no internal alert
+  email.
 
 ## Architecture boundary
 
@@ -105,10 +130,10 @@ pnpm.cmd exec playwright install chromium
 
 ## Run locally
 
-Start PostgreSQL and n8n:
+Start PostgreSQL, n8n, and Mailpit:
 
 ```powershell
-docker compose --env-file .env up -d postgres n8n
+docker compose --env-file .env up -d postgres n8n mailpit
 ```
 
 For an existing Phase 0 PostgreSQL volume, add the Phase 1 roles and databases without deleting
@@ -141,6 +166,9 @@ The host web port comes from `WEB_PORT`. If the default is occupied, set it to `
 development wrapper derives `NEXTAUTH_URL` from that same value. Playwright uses
 `PLAYWRIGHT_PORT`, so its server URL and browser base URL always match.
 
+Mailpit's local inbox is `http://127.0.0.1:8025`. Its SMTP listener is available only inside
+Compose at `mailpit:1025`.
+
 ## Fictional staff accounts
 
 The seed creates one account for each approved role:
@@ -168,6 +196,16 @@ rejection.
 - `GET /api/internal/automation/events/:eventId/context` returns minimal current-run context.
 - `POST /api/internal/automation/events/:eventId/callback` records a matching completion.
 - `POST /api/internal/automation/events/:eventId/failure` records a matching classified failure.
+- `POST /api/internal/automation/provisioning/initialize` snapshots package tasks.
+- `POST /api/internal/automation/provisioning/tasks/:taskId/start` reserves one provider attempt.
+- `POST /api/internal/automation/provisioning/tasks/:taskId/execute` invokes the Local sandbox
+  resource adapter.
+- `POST /api/internal/automation/provisioning/tasks/:taskId/complete` and `/failure` record the
+  bound attempt result.
+- `POST /api/internal/automation/welcome-email/begin` returns frozen delivery data and marks the
+  notification sending.
+- `POST /api/internal/automation/welcome-email/result` records sent, rejected, or uncertain
+  delivery.
 
 All internal automation endpoints require a dedicated bearer token plus a timestamped HMAC over
 the exact method, path and query, timestamp, and raw-body hash. Authentication runs before JSON
@@ -246,7 +284,8 @@ monitoring, and an n8n editor that is not publicly exposed.
 
 ## Current limits
 
-Phase 3 provides durable automation infrastructure, not external provisioning. It does not upload
-payment evidence files or integrate with accounting, e-signature, CRM, email, or payment
-providers. The supplied consumer validates the versioned activation context and closes the run;
-real side-effect adapters remain later, separately reviewed work.
+Phase 4 demonstrates orchestration with application-owned Local sandbox resources and local
+Mailpit SMTP only. Real provider adapters may later be n8n nodes, n8n subworkflows, or dedicated
+provider services while preserving the same application callback contract. It does not upload
+payment evidence or integrate with accounting, e-signature, cloud storage, project management,
+CRM, production email, or payment providers. Phase 5 is intentionally not implemented.

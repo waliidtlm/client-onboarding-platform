@@ -167,8 +167,9 @@ export async function seedDatabase(
     const salesUser = users.get("sales@northstar.test");
     const operationsUser = users.get("operations@northstar.test");
     const financeUser = users.get("finance@northstar.test");
+    const projectManagerUser = users.get("pm@northstar.test");
 
-    if (!salesUser || !operationsUser || !financeUser) {
+    if (!salesUser || !operationsUser || !financeUser || !projectManagerUser) {
       throw new Error("Required fictional staff were not seeded");
     }
 
@@ -184,7 +185,7 @@ export async function seedDatabase(
         commercialGateBlockingReasons: [CommercialGateBlocker.ACTIVATION_AMOUNT_NOT_SATISFIED],
         commercialGateEvaluatedAt: new Date("2026-07-22T14:30:00.000Z"),
         status: OnboardingStatus.COMMERCIAL_PENDING,
-        projectManagerId: null,
+        projectManagerId: projectManagerUser.id,
         submittedById: salesUser.id,
         validatedById: operationsUser.id,
         invoiceTotal: "10000.0000",
@@ -307,6 +308,8 @@ export async function seedDatabase(
       paymentCount,
       salesHandoffCount,
       auditEventCount,
+      provisioningTaskCount,
+      sandboxResourceCount,
     ] = await Promise.all([
       tx.user.count(),
       tx.client.count(),
@@ -319,6 +322,8 @@ export async function seedDatabase(
       tx.payment.count(),
       tx.salesHandoff.count(),
       tx.auditEvent.count(),
+      tx.provisioningTask.count(),
+      tx.sandboxProvisionedResource.count(),
     ]);
 
     return {
@@ -333,6 +338,8 @@ export async function seedDatabase(
       payments: paymentCount,
       salesHandoffs: salesHandoffCount,
       auditEvents: auditEventCount,
+      provisioningTasks: provisioningTaskCount,
+      sandboxResources: sandboxResourceCount,
     };
   });
 }

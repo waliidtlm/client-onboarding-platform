@@ -5,6 +5,7 @@ import {
   AutomationEventStatus,
   AutomationFailureClassification,
   AutomationRunStatus,
+  NotificationStatus,
   Prisma,
   type PrismaClient,
 } from "@/generated/prisma/client";
@@ -12,6 +13,7 @@ import type { ClaimAutomationInput } from "@/application/automation/contracts";
 import { toAutomationEventEnvelope } from "@/application/automation/event-service";
 import type { AutomationClaimResult } from "@/application/automation/types";
 import {
+  automationEventPayloadIsValid,
   automationRunIdempotencyKey,
   isSupportedAutomationEnvelope,
 } from "@/domain/automation/idempotency";
@@ -64,6 +66,67 @@ async function terminalizeRun(
   `);
 }
 
+async function timeoutProvisioningAttempt(
+  tx: TransactionClient,
+  runId: string,
+): Promise<"NONE" | "RETRY" | "MANUAL_REVIEW"> {
+  const attempt = await tx.provisioningTaskAttempt.findUnique({
+    where: { automationRunId: runId },
+    include: { provisioningTask: true },
+  });
+  if (!attempt || attempt.status !== "IN_PROGRESS") return "NONE";
+  const nowRows = await tx.$queryRaw<Array<{ now: Date }>>(
+    Prisma.sql`SELECT CURRENT_TIMESTAMP AS "now"`,
+  );
+  const requiresManualReview =
+    attempt.provisioningTask.attemptCount >= attempt.provisioningTask.maxAttempts;
+  await tx.provisioningTaskAttempt.update({
+    where: { id: attempt.id },
+    data: {
+      status: "TIMED_OUT",
+      completedAt: nowRows[0]!.now,
+      retryable: true,
+      errorCode: "LEASE_EXPIRED",
+      errorMessage: "The worker lease expired after the provider attempt started.",
+    },
+  });
+  await tx.provisioningTask.update({
+    where: { id: attempt.provisioningTaskId },
+    data: {
+      status: requiresManualReview ? "MANUAL_REVIEW_REQUIRED" : "PENDING",
+      version: { increment: 1 },
+      lastErrorCode: "LEASE_EXPIRED",
+      lastErrorMessage: "The provider attempt timed out before its result was recorded.",
+    },
+  });
+  return requiresManualReview ? "MANUAL_REVIEW" : "RETRY";
+}
+
+async function markUncertainWelcomeIfSending(
+  tx: TransactionClient,
+  eventId: string,
+): Promise<boolean> {
+  const event = await tx.automationEvent.findUnique({ where: { id: eventId } });
+  if (event?.eventType !== "WELCOME_EMAIL_REQUESTED") return false;
+  const payload =
+    event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
+      ? (event.payload as Record<string, unknown>)
+      : {};
+  if (typeof payload.notificationId !== "string") return false;
+  const updated = await tx.notificationLog.updateMany({
+    where: {
+      id: payload.notificationId,
+      onboardingId: event.aggregateId,
+      status: NotificationStatus.SENDING,
+    },
+    data: {
+      status: NotificationStatus.DELIVERY_UNCERTAIN,
+      failureReason: "The worker lease expired after email delivery began.",
+    },
+  });
+  return updated.count === 1;
+}
+
 async function recoverExhaustedLeases(tx: TransactionClient): Promise<void> {
   const expired = await tx.$queryRaw<Array<{ id: string; currentRunId: string }>>(Prisma.sql`
     SELECT "id", "currentRunId"
@@ -78,23 +141,40 @@ async function recoverExhaustedLeases(tx: TransactionClient): Promise<void> {
   `);
 
   for (const event of expired) {
+    const uncertainWelcome = await markUncertainWelcomeIfSending(tx, event.id);
     await terminalizeRun(tx, {
       runId: event.currentRunId,
       status: AutomationRunStatus.TIMED_OUT,
-      errorCode: "LEASE_EXPIRED",
-      errorMessage: "The worker lease expired before completion.",
-      classification: AutomationFailureClassification.PERMANENT,
+      errorCode: uncertainWelcome ? "EMAIL_DELIVERY_UNCERTAIN" : "LEASE_EXPIRED",
+      errorMessage: uncertainWelcome
+        ? "The email delivery outcome is uncertain after lease expiry."
+        : "The worker lease expired before completion.",
+      classification: uncertainWelcome
+        ? AutomationFailureClassification.OPERATOR_REMEDIABLE
+        : AutomationFailureClassification.PERMANENT,
     });
+    const taskOutcome = await timeoutProvisioningAttempt(tx, event.currentRunId);
     await tx.automationEvent.update({
       where: { id: event.id },
       data: {
-        status: AutomationEventStatus.DEAD_LETTER,
+        status:
+          uncertainWelcome || taskOutcome === "MANUAL_REVIEW"
+            ? AutomationEventStatus.FAILED
+            : AutomationEventStatus.DEAD_LETTER,
         currentRunId: null,
         claimedBy: null,
         claimedAt: null,
         leaseExpiresAt: null,
-        lastErrorCode: "ATTEMPTS_EXHAUSTED",
-        lastError: "The final worker lease expired.",
+        lastErrorCode: uncertainWelcome
+          ? "EMAIL_DELIVERY_UNCERTAIN"
+          : taskOutcome === "MANUAL_REVIEW"
+            ? "LEASE_EXPIRED"
+            : "ATTEMPTS_EXHAUSTED",
+        lastError: uncertainWelcome
+          ? "The welcome email may have been delivered and requires administrator resolution."
+          : taskOutcome === "MANUAL_REVIEW"
+            ? "The final provider attempt timed out and requires manual review."
+            : "The final worker lease expired.",
       },
     });
   }
@@ -143,7 +223,12 @@ async function responseForReceipt(
 function envelopeError(
   event: LockedEvent,
 ): "INVALID_EVENT_INTEGRITY" | "INVALID_EVENT_SCHEMA" | "UNSUPPORTED_EVENT_TYPE" | null {
-  if (event.eventType !== "ONBOARDING_ACTIVATED" || event.aggregateType !== "ONBOARDING") {
+  if (
+    !["ONBOARDING_ACTIVATED", "PROVISIONING_TASK_REQUESTED", "WELCOME_EMAIL_REQUESTED"].includes(
+      event.eventType,
+    ) ||
+    event.aggregateType !== "ONBOARDING"
+  ) {
     return "UNSUPPORTED_EVENT_TYPE";
   }
   if (event.schemaVersion !== 1) {
@@ -151,10 +236,7 @@ function envelopeError(
   }
   if (
     !isSupportedAutomationEnvelope(event) ||
-    event.payload === null ||
-    typeof event.payload !== "object" ||
-    Array.isArray(event.payload) ||
-    Object.keys(event.payload as object).length !== 0
+    !automationEventPayloadIsValid(event.eventType, event.payload)
   ) {
     return "INVALID_EVENT_INTEGRITY";
   }
@@ -239,25 +321,43 @@ export async function claimNextAutomationEvent(
       if (!event.currentRunId) {
         throw new Error("Processing automation event has no current run");
       }
+      const uncertainWelcome = await markUncertainWelcomeIfSending(tx, event.id);
       await terminalizeRun(tx, {
         runId: event.currentRunId,
         status: AutomationRunStatus.TIMED_OUT,
-        errorCode: "LEASE_EXPIRED",
-        errorMessage: "The worker lease expired before completion.",
-        classification: AutomationFailureClassification.RETRYABLE,
+        errorCode: uncertainWelcome ? "EMAIL_DELIVERY_UNCERTAIN" : "LEASE_EXPIRED",
+        errorMessage: uncertainWelcome
+          ? "The email delivery outcome is uncertain after lease expiry."
+          : "The worker lease expired before completion.",
+        classification: uncertainWelcome
+          ? AutomationFailureClassification.OPERATOR_REMEDIABLE
+          : AutomationFailureClassification.RETRYABLE,
       });
+      const taskOutcome = await timeoutProvisioningAttempt(tx, event.currentRunId);
       await tx.automationEvent.update({
         where: { id: event.id },
         data: {
-          status: AutomationEventStatus.PENDING,
+          status:
+            uncertainWelcome || taskOutcome === "MANUAL_REVIEW"
+              ? AutomationEventStatus.FAILED
+              : AutomationEventStatus.PENDING,
           currentRunId: null,
           claimedBy: null,
           claimedAt: null,
           leaseExpiresAt: null,
-          lastErrorCode: "LEASE_EXPIRED",
-          lastError: "The previous worker lease expired.",
+          lastErrorCode: uncertainWelcome ? "EMAIL_DELIVERY_UNCERTAIN" : "LEASE_EXPIRED",
+          lastError: uncertainWelcome
+            ? "The welcome email may have been delivered and requires administrator resolution."
+            : "The previous worker lease expired.",
         },
       });
+      if (uncertainWelcome || taskOutcome === "MANUAL_REVIEW") {
+        await tx.automationClaimRequest.update({
+          where: { requestId: input.requestId },
+          data: { outcome: AutomationClaimOutcome.EMPTY },
+        });
+        return { kind: "EMPTY", idempotent: false };
+      }
     }
 
     const attemptNumber = event.attemptCount + 1;

@@ -30,6 +30,8 @@
     "n8n:validate": "node scripts/validate-n8n-workflows.mjs",
     "secret:scan": "secretlint \"**/*\" \".env.example\"",
     "smoke:phase3": "tsx --tsconfig apps/web/tsconfig.json apps/web/scripts/phase3-smoke-activate.ts",
+    "smoke:phase4": "tsx --tsconfig apps/web/tsconfig.json apps/web/scripts/phase4-smoke.ts",
+    "smoke:phase4:resume": "tsx --tsconfig apps/web/tsconfig.json apps/web/scripts/phase4-smoke-resume.ts",
     "test": "pnpm --filter @client-onboarding/web test",
     "test:e2e": "pnpm --filter @client-onboarding/web test:e2e",
     "test:integration": "pnpm --filter @client-onboarding/web test:integration",

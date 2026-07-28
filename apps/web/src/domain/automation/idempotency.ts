@@ -1,5 +1,12 @@
 export const SUPPORTED_AUTOMATION_EVENT_TYPE = "ONBOARDING_ACTIVATED";
 export const SUPPORTED_AUTOMATION_SCHEMA_VERSION = 1;
+export const SUPPORTED_AUTOMATION_EVENT_TYPES = [
+  "ONBOARDING_ACTIVATED",
+  "PROVISIONING_TASK_REQUESTED",
+  "WELCOME_EMAIL_REQUESTED",
+] as const;
+
+export type SupportedAutomationEventType = (typeof SUPPORTED_AUTOMATION_EVENT_TYPES)[number];
 
 export function onboardingActivatedDeduplicationKey(onboardingId: string): string {
   return `ONBOARDING_ACTIVATED:${onboardingId}:v1`;
@@ -17,10 +24,34 @@ export function isSupportedAutomationEnvelope(
   }>,
 ): boolean {
   return (
-    input.eventType === SUPPORTED_AUTOMATION_EVENT_TYPE &&
+    SUPPORTED_AUTOMATION_EVENT_TYPES.includes(input.eventType as SupportedAutomationEventType) &&
     input.aggregateType === "ONBOARDING" &&
     input.schemaVersion === SUPPORTED_AUTOMATION_SCHEMA_VERSION
   );
+}
+
+export function automationEventPayloadIsValid(
+  eventType: string,
+  payload: unknown,
+): payload is Record<string, string> {
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const record = payload as Record<string, unknown>;
+  if (eventType === "ONBOARDING_ACTIVATED") return Object.keys(record).length === 0;
+  if (eventType === "PROVISIONING_TASK_REQUESTED") {
+    return (
+      Object.keys(record).length === 1 &&
+      typeof record.taskId === "string" &&
+      /^[0-9a-f-]{36}$/i.test(record.taskId)
+    );
+  }
+  if (eventType === "WELCOME_EMAIL_REQUESTED") {
+    return (
+      Object.keys(record).length === 1 &&
+      typeof record.notificationId === "string" &&
+      /^[0-9a-f-]{36}$/i.test(record.notificationId)
+    );
+  }
+  return false;
 }
 
 export function canonicalizeJson(value: unknown): string {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   automationRunIdempotencyKey,
+  automationEventPayloadIsValid,
   canonicalizeJson,
   normalizedJsonEqual,
   onboardingActivatedDeduplicationKey,
@@ -18,5 +19,15 @@ describe("automation identifiers and canonical JSON", () => {
     expect(canonicalizeJson(left)).toBe(canonicalizeJson(right));
     expect(normalizedJsonEqual(left, right)).toBe(true);
     expect(normalizedJsonEqual(left, { ...right, b: 3 })).toBe(false);
+  });
+
+  it("validates identifiers-only Phase 4 payloads", () => {
+    const id = "00000000-0000-4000-8000-000000000001";
+    expect(automationEventPayloadIsValid("ONBOARDING_ACTIVATED", {})).toBe(true);
+    expect(automationEventPayloadIsValid("PROVISIONING_TASK_REQUESTED", { taskId: id })).toBe(true);
+    expect(automationEventPayloadIsValid("WELCOME_EMAIL_REQUESTED", { notificationId: id })).toBe(
+      true,
+    );
+    expect(automationEventPayloadIsValid("PROVISIONING_TASK_REQUESTED", {})).toBe(false);
   });
 });

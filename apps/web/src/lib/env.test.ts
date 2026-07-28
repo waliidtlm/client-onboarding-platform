@@ -33,6 +33,7 @@ describe("parseServerEnvironment", () => {
       DATABASE_URL: validDatabaseUrl,
       LOG_LEVEL: "debug",
       NEXTAUTH_URL: "http://127.0.0.1:3100",
+      PROVISIONING_TASK_MAX_ATTEMPTS: 3,
     });
   });
 

@@ -5,7 +5,7 @@ import { listOnboardings } from "@/lib/onboardings/queries";
 
 export default async function OnboardingsPage() {
   const staff = await requirePermission(Permission.ONBOARDING_READ, "/onboardings");
-  const onboardings = await listOnboardings();
+  const onboardings = await listOnboardings(staff);
 
   return (
     <section>

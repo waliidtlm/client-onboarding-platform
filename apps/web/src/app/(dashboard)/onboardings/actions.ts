@@ -26,6 +26,15 @@ import type { CommercialActionState } from "@/application/commercial/action-stat
 import { Permission, requirePermission } from "@/lib/auth/authorization";
 import type { Result } from "@/domain/errors";
 import type { CommercialMutationResult } from "@/application/commercial/types";
+import { assignProjectManager } from "@/application/provisioning/project-manager-service";
+import {
+  acceptManualProvisioning,
+  retryManualProvisioning,
+} from "@/application/provisioning/manual-review-service";
+import {
+  approveInternalReadiness,
+  resolveWelcomeDeliveryUncertainty,
+} from "@/application/notifications/welcome-email-service";
 
 function text(formData: FormData, name: string): string {
   const value = formData.get(name);
@@ -359,5 +368,118 @@ export async function recalculateCommercialGateAction(
     }),
     onboardingId,
     "Commercial Gate recalculated",
+  );
+}
+
+async function finishPhase4(
+  result: Result<unknown>,
+  onboardingId: string,
+  message: string,
+): Promise<void> {
+  revalidatePath("/onboardings");
+  revalidatePath(`/onboardings/${onboardingId}`);
+  if (!result.ok) {
+    redirect(
+      `/onboardings/${onboardingId}?error=${encodeURIComponent(`${result.error.code}: ${result.error.message}`)}`,
+    );
+  }
+  redirect(`/onboardings/${onboardingId}?success=${encodeURIComponent(message)}`);
+}
+
+export async function assignProjectManagerAction(formData: FormData): Promise<void> {
+  const onboardingId = text(formData, "onboardingId");
+  const staff = await requirePermission(
+    Permission.PROJECT_MANAGER_ASSIGN,
+    `/onboardings/${onboardingId}`,
+  );
+  await finishPhase4(
+    await assignProjectManager({
+      actorId: staff.id,
+      onboardingId,
+      projectManagerId: text(formData, "projectManagerId"),
+      expectedVersion: integer(formData, "expectedVersion"),
+      correlationId: randomUUID(),
+    }),
+    onboardingId,
+    "Project Manager assigned",
+  );
+}
+
+export async function retryProvisioningTaskAction(formData: FormData): Promise<void> {
+  const onboardingId = text(formData, "onboardingId");
+  const staff = await requirePermission(
+    Permission.PROVISIONING_RESOLVE,
+    `/onboardings/${onboardingId}`,
+  );
+  await finishPhase4(
+    await retryManualProvisioning({
+      actorId: staff.id,
+      onboardingId,
+      taskId: text(formData, "taskId"),
+      expectedTaskVersion: integer(formData, "expectedTaskVersion"),
+      reason: text(formData, "reason"),
+      correlationId: randomUUID(),
+    }),
+    onboardingId,
+    "Provisioning retry authorized",
+  );
+}
+
+export async function acceptProvisioningTaskAction(formData: FormData): Promise<void> {
+  const onboardingId = text(formData, "onboardingId");
+  const staff = await requirePermission(
+    Permission.PROVISIONING_RESOLVE,
+    `/onboardings/${onboardingId}`,
+  );
+  await finishPhase4(
+    await acceptManualProvisioning({
+      actorId: staff.id,
+      onboardingId,
+      taskId: text(formData, "taskId"),
+      expectedTaskVersion: integer(formData, "expectedTaskVersion"),
+      reason: text(formData, "reason"),
+      correlationId: randomUUID(),
+    }),
+    onboardingId,
+    "Provisioning task accepted manually",
+  );
+}
+
+export async function approveInternalReadinessAction(formData: FormData): Promise<void> {
+  const onboardingId = text(formData, "onboardingId");
+  const staff = await requirePermission(
+    Permission.INTERNAL_READINESS_APPROVE,
+    `/onboardings/${onboardingId}`,
+  );
+  await finishPhase4(
+    await approveInternalReadiness({
+      actorId: staff.id,
+      onboardingId,
+      expectedVersion: integer(formData, "expectedVersion"),
+      note: nullableText(formData, "note"),
+      correlationId: randomUUID(),
+    }),
+    onboardingId,
+    "Internal readiness approved",
+  );
+}
+
+export async function resolveWelcomeUncertaintyAction(formData: FormData): Promise<void> {
+  const onboardingId = text(formData, "onboardingId");
+  const staff = await requirePermission(
+    Permission.EMAIL_UNCERTAINTY_RESOLVE,
+    `/onboardings/${onboardingId}`,
+  );
+  await finishPhase4(
+    await resolveWelcomeDeliveryUncertainty({
+      actorId: staff.id,
+      notificationId: text(formData, "notificationId"),
+      action: text(formData, "resolutionAction"),
+      providerReference: nullableText(formData, "providerReference"),
+      reason: text(formData, "reason"),
+      correlationId: randomUUID(),
+    }),
+    onboardingId,
+    "Welcome-email uncertainty resolved",
   );
 }

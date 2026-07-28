@@ -6,6 +6,7 @@ import type { AutomationContextResult } from "@/application/automation/types";
 import { executeService, parseInput, reject } from "@/application/commercial/service-support";
 import { canLoadAutomationContext } from "@/domain/automation/event-state";
 import { isSupportedAutomationEnvelope } from "@/domain/automation/idempotency";
+import { automationEventPayloadIsValid } from "@/domain/automation/idempotency";
 import type { Result } from "@/domain/errors";
 
 export async function loadAutomationContext(
@@ -55,15 +56,44 @@ export async function loadAutomationContext(
         }
         reject("AUTOMATION_CONTEXT_DENIED", "The event is not actively processing.");
       }
-      if (!isSupportedAutomationEnvelope(event)) {
+      if (
+        !isSupportedAutomationEnvelope(event) ||
+        !automationEventPayloadIsValid(event.eventType, event.payload)
+      ) {
         if (event.schemaVersion !== 1) {
           reject("INVALID_EVENT_SCHEMA", "The event schema is not supported.");
         }
         reject("UNSUPPORTED_EVENT_TYPE", "The event type is not supported.");
       }
       const onboarding = event.onboarding;
-      if (onboarding.status !== "READY_FOR_ONBOARDING" || !onboarding.activatedAt) {
+      const payload = event.payload as Record<string, string>;
+      const taskId = payload.taskId;
+      const notificationId = payload.notificationId;
+      const task =
+        event.eventType === "PROVISIONING_TASK_REQUESTED" && taskId
+          ? await tx.provisioningTask.findUnique({ where: { id: taskId } })
+          : null;
+      const notification =
+        event.eventType === "WELCOME_EMAIL_REQUESTED" && notificationId
+          ? await tx.notificationLog.findUnique({ where: { id: notificationId } })
+          : null;
+      if (
+        event.eventType === "ONBOARDING_ACTIVATED" &&
+        (onboarding.status !== "READY_FOR_ONBOARDING" || !onboarding.activatedAt)
+      ) {
         reject("INVALID_TRANSITION", "The onboarding is not eligible for activation automation.");
+      }
+      if (
+        event.eventType === "PROVISIONING_TASK_REQUESTED" &&
+        (!task || task.onboardingId !== onboarding.id)
+      ) {
+        reject("EVENT_BINDING_CONFLICT", "The task event payload does not match the onboarding.");
+      }
+      if (
+        event.eventType === "WELCOME_EMAIL_REQUESTED" &&
+        (!notification || notification.onboardingId !== onboarding.id)
+      ) {
+        reject("EVENT_BINDING_CONFLICT", "The email event payload does not match the onboarding.");
       }
       if (!onboarding.client?.companyName || !onboarding.servicePackageNameSnapshot) {
         reject("MISSING_BUSINESS_CONFIGURATION", "Required onboarding configuration is missing.");
@@ -71,18 +101,42 @@ export async function loadAutomationContext(
       return {
         eventId: event.id,
         runId: run.id,
-        eventType: "ONBOARDING_ACTIVATED" as const,
+        eventType: event.eventType as
+          "ONBOARDING_ACTIVATED" | "PROVISIONING_TASK_REQUESTED" | "WELCOME_EMAIL_REQUESTED",
         schemaVersion: 1 as const,
         correlationId: event.correlationId,
         onboarding: {
           id: onboarding.id,
           status: onboarding.status,
-          activatedAt: onboarding.activatedAt.toISOString(),
+          activatedAt: onboarding.activatedAt?.toISOString() ?? null,
           clientCompanyName: onboarding.client.companyName,
           purchasedPackageName: onboarding.servicePackageNameSnapshot,
           projectManagerId: onboarding.projectManagerId,
           businessVersion: onboarding.version,
         },
+        ...(task
+          ? {
+              task: {
+                id: task.id,
+                onboardingId: task.onboardingId,
+                status: task.status,
+                version: task.version,
+                attemptCount: task.attemptCount,
+                maxAttempts: task.maxAttempts,
+                automationKey: task.automationKey,
+                idempotencyKey: task.idempotencyKey,
+              },
+            }
+          : {}),
+        ...(notification
+          ? {
+              notification: {
+                id: notification.id,
+                status: notification.status,
+                recipient: notification.recipient,
+              },
+            }
+          : {}),
       };
     });
   });

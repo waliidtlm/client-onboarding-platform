@@ -37,4 +37,11 @@ describe("role authorization", () => {
       expect(can(permission, role)).toBe(allowedRoles.includes(role as never));
     }
   });
+
+  it("keeps Phase 4 resolution with Admin and Project Managers", () => {
+    expect(can(Permission.PROJECT_MANAGER_ASSIGN, Role.OPERATIONS)).toBe(true);
+    expect(can(Permission.PROVISIONING_RESOLVE, Role.OPERATIONS)).toBe(false);
+    expect(can(Permission.PROVISIONING_RESOLVE, Role.PROJECT_MANAGER)).toBe(true);
+    expect(can(Permission.EMAIL_UNCERTAINTY_RESOLVE, Role.PROJECT_MANAGER)).toBe(false);
+  });
 });

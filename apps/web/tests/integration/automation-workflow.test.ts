@@ -45,6 +45,11 @@ const migration = new PrismaClient({ adapter: new PrismaPg({ connectionString: m
 let salesId = "";
 let financeId = "";
 let adminId = "";
+const PHASE4_CAPABILITIES = [
+  "ONBOARDING_ACTIVATED",
+  "PROVISIONING_TASK_REQUESTED",
+  "WELCOME_EMAIL_REQUESTED",
+] as const;
 
 function valueOf<T>(result: Result<T>): T {
   if (!result.ok) {
@@ -163,7 +168,15 @@ async function claimEvent(
 ): Promise<Extract<AutomationClaimResult, { kind: "CLAIMED" }>> {
   await isolateClaimCandidate(eventId);
   return claimed(
-    await claimAutomationEvent({ requestId: randomUUID(), workerId, workflowName }, runtime),
+    await claimAutomationEvent(
+      {
+        requestId: randomUUID(),
+        workerId,
+        workflowName,
+        supportedEventTypes: PHASE4_CAPABILITIES,
+      },
+      runtime,
+    ),
   );
 }
 
@@ -252,6 +265,7 @@ describe("Phase 3 durable automation processing", () => {
       requestId,
       workerId: "worker-claim",
       workflowName: "phase3-consumer",
+      supportedEventTypes: PHASE4_CAPABILITIES,
     };
     const [left, right] = await Promise.all([
       claimAutomationEvent(input, runtime),
@@ -284,6 +298,18 @@ describe("Phase 3 durable automation processing", () => {
       ok: false,
       error: { code: "CLAIM_REQUEST_CONFLICT" },
     });
+    const capabilityConflict = await claimAutomationEvent(
+      {
+        ...input,
+        requestId: replayRequestId,
+        supportedEventTypes: ["ONBOARDING_ACTIVATED"],
+      },
+      runtime,
+    );
+    expect(capabilityConflict).toMatchObject({
+      ok: false,
+      error: { code: "CLAIM_REQUEST_CONFLICT" },
+    });
 
     const context = valueOf(
       await loadAutomationContext(
@@ -310,6 +336,38 @@ describe("Phase 3 durable automation processing", () => {
     expect(unrelated).toMatchObject({
       ok: false,
       error: { code: "AUTOMATION_CONTEXT_DENIED" },
+    });
+  });
+
+  it("rejects capabilities outside the authenticated worker allowlist", async () => {
+    const broadened = await claimAutomationEvent(
+      {
+        requestId: randomUUID(),
+        workerId: "phase5-access-worker",
+        workflowName: "Phase 5 Access Email",
+        supportedEventTypes: ["CLIENT_ACCESS_EMAIL_REQUESTED", "ONBOARDING_ACTIVATED"],
+      },
+      runtime,
+      ["CLIENT_ACCESS_EMAIL_REQUESTED"],
+    );
+    expect(broadened).toMatchObject({
+      ok: false,
+      error: { code: "ACCESS_DENIED" },
+    });
+
+    const completionEvent = await claimAutomationEvent(
+      {
+        requestId: randomUUID(),
+        workerId: "phase5-access-worker",
+        workflowName: "Phase 5 Access Email",
+        supportedEventTypes: ["CLIENT_REQUIREMENTS_COMPLETED"],
+      },
+      runtime,
+      ["CLIENT_ACCESS_EMAIL_REQUESTED"],
+    );
+    expect(completionEvent).toMatchObject({
+      ok: false,
+      error: { code: "INVALID_INPUT" },
     });
   });
 
@@ -430,6 +488,7 @@ describe("Phase 3 durable automation processing", () => {
           requestId: randomUUID(),
           workerId: "recovery-worker",
           workflowName: "phase3-consumer",
+          supportedEventTypes: PHASE4_CAPABILITIES,
         },
         runtime,
       ),
@@ -495,6 +554,7 @@ describe("Phase 3 durable automation processing", () => {
         requestId: randomUUID(),
         workerId: "worker-schema",
         workflowName: "phase3-consumer",
+        supportedEventTypes: PHASE4_CAPABILITIES,
       },
       runtime,
     );

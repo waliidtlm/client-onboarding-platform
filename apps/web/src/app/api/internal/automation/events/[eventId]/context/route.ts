@@ -14,7 +14,7 @@ export async function GET(
 ): Promise<Response> {
   const startedAt = Date.now();
   const requestId = randomUUID();
-  const authenticated = await authenticateAutomationRequest(request);
+  const authenticated = await authenticateAutomationRequest(request, ["PHASE4_PROVISIONING"]);
   if (!authenticated.ok) return authenticated.response;
   if (authenticated.rawBody.byteLength !== 0) {
     return Response.json(

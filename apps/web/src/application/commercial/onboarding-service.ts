@@ -1,6 +1,8 @@
 import {
   AuditActorType,
+  AutomationEventStatus,
   CommercialGateStatus,
+  NotificationStatus,
   OnboardingStatus,
   Prisma,
   Role,
@@ -29,6 +31,11 @@ export async function cancelOnboarding(
     return database.$transaction(
       async (tx) => {
         const actor = await requireActor(tx, input.actorId, [Role.ADMIN, Role.OPERATIONS]);
+        await tx.$queryRaw(Prisma.sql`
+          SELECT "id" FROM "Onboarding"
+          WHERE "id" = ${input.onboardingId}::uuid
+          FOR UPDATE
+        `);
         const onboarding = await tx.onboarding.findUnique({
           where: { id: input.onboardingId },
         });
@@ -52,12 +59,63 @@ export async function cancelOnboarding(
         }
         if (
           actor.role === Role.OPERATIONS &&
-          onboarding.status === OnboardingStatus.READY_FOR_ONBOARDING
+          (onboarding.status === OnboardingStatus.READY_FOR_ONBOARDING ||
+            onboarding.status === OnboardingStatus.INTERNAL_REVIEW ||
+            onboarding.status === OnboardingStatus.CLIENT_AWAITING_ACTION ||
+            onboarding.status === OnboardingStatus.CLIENT_REQUIREMENTS_COMPLETE)
         ) {
           reject("ACCESS_DENIED", "Only an administrator can cancel after activation.");
         }
 
         const cancelledAt = new Date();
+        const activeTokens = await tx.clientAccessToken.findMany({
+          where: { onboardingId: onboarding.id, revokedAt: null },
+          select: { id: true },
+        });
+        for (const token of activeTokens) {
+          await tx.clientAccessToken.update({
+            where: { id: token.id },
+            data: {
+              revokedAt: cancelledAt,
+              revocationReason: "ONBOARDING_CANCELLED",
+            },
+          });
+          await appendAuditEvent(tx, {
+            onboardingId: onboarding.id,
+            actorType: AuditActorType.STAFF,
+            actorId: input.actorId,
+            action: "CLIENT_ACCESS_REVOKED_ON_CANCELLATION",
+            entityType: "CLIENT_ACCESS_TOKEN",
+            entityId: token.id,
+            previousValue: { revokedAt: null },
+            newValue: { revokedAt: cancelledAt.toISOString() },
+            metadata: { tokenId: token.id },
+            correlationId: input.correlationId,
+          });
+        }
+        await tx.notificationLog.updateMany({
+          where: {
+            onboardingId: onboarding.id,
+            clientAccessTokenId: { not: null },
+            status: { in: [NotificationStatus.PENDING, NotificationStatus.FAILED] },
+          },
+          data: {
+            status: NotificationStatus.FAILED,
+            failureReason: "Onboarding was cancelled before secure access delivery.",
+          },
+        });
+        await tx.automationEvent.updateMany({
+          where: {
+            aggregateId: onboarding.id,
+            eventType: "CLIENT_ACCESS_EMAIL_REQUESTED",
+            status: { in: [AutomationEventStatus.PENDING, AutomationEventStatus.FAILED] },
+          },
+          data: {
+            status: AutomationEventStatus.FAILED,
+            lastErrorCode: "ONBOARDING_CANCELLED",
+            lastError: "Onboarding was cancelled before secure access delivery.",
+          },
+        });
         await tx.onboarding.update({
           where: { id: onboarding.id },
           data: {

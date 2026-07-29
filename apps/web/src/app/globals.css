@@ -282,6 +282,76 @@ button:disabled {
   font-size: 0.85rem;
 }
 
+.client-access-shell {
+  width: min(100% - 2rem, 70rem);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+}
+
+.client-access-card {
+  width: min(100%, 34rem);
+  margin: 12vh auto;
+  padding: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+
+.client-access-header,
+.client-requirement-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.client-access-header {
+  margin-bottom: 2rem;
+  padding: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+
+.client-requirements-list {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.client-requirement {
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-left: 0.4rem solid #94a3b8;
+  border-radius: 0.8rem;
+  background: var(--surface);
+}
+
+.client-requirement.status-approved {
+  border-left-color: #2e7d4f;
+}
+
+.client-requirement.status-rejected {
+  border-left-color: var(--danger);
+}
+
+.client-requirement.status-submitted,
+.client-requirement.status-under_review {
+  border-left-color: var(--accent);
+}
+
+.client-submission {
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: 0.6rem;
+  background: #f8fafc;
+}
+
+.client-submission .button-secondary {
+  margin: 0 0.5rem 0.5rem 0;
+}
+
 .dashboard-shell {
   min-height: 100vh;
 }

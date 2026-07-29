@@ -31,8 +31,9 @@ afterAll(async () => {
 
 describe("Phase 1 data integrity", () => {
   it("uses dedicated test and shadow targets and refuses the application database", () => {
-    expect(new URL(testRuntimeUrl).pathname).toBe("/onboarding_test");
-    expect(new URL(testMigrationUrl).pathname).toBe("/onboarding_test");
+    const testDatabaseName = process.env.TEST_DB_NAME ?? "onboarding_test";
+    expect(new URL(testRuntimeUrl).pathname).toBe(`/${testDatabaseName}`);
+    expect(new URL(testMigrationUrl).pathname).toBe(`/${testDatabaseName}`);
     expect(new URL(process.env.SHADOW_DATABASE_URL ?? "").pathname).toBe("/onboarding_shadow");
     expect(new URL(testMigrationUrl).pathname).not.toBe("/onboarding_app");
   });

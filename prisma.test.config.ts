@@ -8,9 +8,14 @@ function databaseName(value: string): string {
 
 const testMigrationUrl = process.env.TEST_MIGRATION_DATABASE_URL;
 const shadowDatabaseUrl = process.env.SHADOW_DATABASE_URL;
+const testDatabaseName = process.env.TEST_DB_NAME ?? "onboarding_test";
 
-if (!testMigrationUrl || databaseName(testMigrationUrl) !== "onboarding_test") {
-  throw new Error("Destructive test setup requires onboarding_test");
+if (
+  !/^onboarding_test(?:_[a-z0-9_]+)?$/.test(testDatabaseName) ||
+  !testMigrationUrl ||
+  databaseName(testMigrationUrl) !== testDatabaseName
+) {
+  throw new Error("Test migration setup requires the explicitly named onboarding_test database");
 }
 
 if (!shadowDatabaseUrl || databaseName(shadowDatabaseUrl) !== "onboarding_shadow") {

@@ -2,9 +2,9 @@
 
 Production-minded internal client onboarding platform with durable n8n orchestration.
 
-Phase 4 keeps the application as the business authority and adds sequential provisioning,
-Project Manager ownership, internal readiness approval, frozen welcome-email delivery, explicit
-SMTP ambiguity handling, Mailpit, and a retained inactive Phase 3 consumer for evidence.
+Phase 5 keeps the application as the business authority and adds immutable client requirements,
+reconstructable secure access, scoped client sessions, private direct uploads, staff review, and
+durable completion events.
 
 ## Phase 1 behavior
 
@@ -69,6 +69,30 @@ SMTP ambiguity handling, Mailpit, and a retained inactive Phase 3 consumer for e
 - The PM dashboard is the manual-review notification surface. Phase 4 sends no internal alert
   email.
 
+## Phase 5 behavior
+
+- Authorized staff issue access only after Phase 4 eligibility. That transaction freezes the
+  package requirement snapshots before it creates the access-email event.
+- Secure links contain a 256-bit random nonce and a signed, versioned capability. PostgreSQL
+  stores only reconstruction components and a SHA-256 hash of the complete token.
+- n8n uses a dedicated worker credential and can claim only `CLIENT_ACCESS_EMAIL_REQUESTED`.
+  It calls an authenticated application delivery endpoint, so the bearer link never enters n8n.
+- Confirmed email delivery sets `clientAccessDeliveredAt` and all snapshotted due dates once.
+  Failure or ambiguous delivery leaves due dates empty until an Admin resolves it.
+- `/client-access#token=...` removes the fragment before exchange and creates a 30-minute,
+  HttpOnly, same-site client cookie. Every request revalidates the token and onboarding.
+- Public writes require exact origin, JSON, fetch-site, a session-bound CSRF token, and
+  PostgreSQL-backed rate limits: exchange IP 10/10m, valid token 5/10m, session mutations 30/5m,
+  and upload intents 20/10m. Limiter failures deny the request.
+- Direct uploads use five-minute URLs for one temporary object in a private MinIO bucket. The
+  server checks size, SHA-256, detected type, ownership, and intent state before copying to an
+  immutable final key.
+- Submissions are immutable versions. Admin or the assigned active Project Manager reviews the
+  exact latest version; Operations sees metadata only.
+- Approval of the last mandatory item atomically moves the onboarding to
+  `CLIENT_REQUIREMENTS_COMPLETE` and leaves exactly one `CLIENT_REQUIREMENTS_COMPLETED` event
+  pending for the unimplemented Phase 6.
+
 ## Architecture boundary
 
 - PostgreSQL is the source of business truth.
@@ -130,10 +154,10 @@ pnpm.cmd exec playwright install chromium
 
 ## Run locally
 
-Start PostgreSQL, n8n, and Mailpit:
+Start PostgreSQL, MinIO, n8n, and Mailpit:
 
 ```powershell
-docker compose --env-file .env up -d postgres n8n mailpit
+docker compose --env-file .env up -d postgres minio minio-bootstrap n8n mailpit
 ```
 
 For an existing Phase 0 PostgreSQL volume, add the Phase 1 roles and databases without deleting
@@ -206,6 +230,8 @@ rejection.
   notification sending.
 - `POST /api/internal/automation/welcome-email/result` records sent, rejected, or uncertain
   delivery.
+- `POST /api/internal/automation/client-access-email/deliver` reconstructs and sends a frozen
+  secure-access email without returning the bearer link to n8n.
 
 All internal automation endpoints require a dedicated bearer token plus a timestamped HMAC over
 the exact method, path and query, timestamp, and raw-body hash. Authentication runs before JSON
@@ -284,8 +310,7 @@ monitoring, and an n8n editor that is not publicly exposed.
 
 ## Current limits
 
-Phase 4 demonstrates orchestration with application-owned Local sandbox resources and local
-Mailpit SMTP only. Real provider adapters may later be n8n nodes, n8n subworkflows, or dedicated
-provider services while preserving the same application callback contract. It does not upload
-payment evidence or integrate with accounting, e-signature, cloud storage, project management,
-CRM, production email, or payment providers. Phase 5 is intentionally not implemented.
+Phase 5 uses local MinIO and Mailpit only. Binary-signature detection is a best-effort format
+check, not malware scanning. Production still needs malware scanning/quarantine, managed object
+storage and email, TLS, key rotation, backups, monitoring, and retention policy. Phase 6 is
+intentionally not implemented; its completion event remains pending.

@@ -17,6 +17,8 @@ export default defineConfig({
       AUTOMATION_SERVICE_TOKEN: "unit-test-automation-service-token-000000",
       AUTOMATION_PHASE5_SERVICE_TOKEN: "unit-test-phase5-service-token-00000000",
       AUTOMATION_PHASE5_HMAC_SECRET: "unit-test-phase5-hmac-secret-0000000000",
+      AUTOMATION_PHASE6_SERVICE_TOKEN: "unit-test-phase6-service-token-00000000",
+      AUTOMATION_PHASE6_HMAC_SECRET: "unit-test-phase6-hmac-secret-0000000000",
       AUTH_SECRET: "unit-test-auth-secret-with-at-least-32-characters",
       CLIENT_ACCESS_ACTIVE_SIGNING_KEY_VERSION: "1",
       CLIENT_ACCESS_SIGNING_KEYS: '{"1":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}',

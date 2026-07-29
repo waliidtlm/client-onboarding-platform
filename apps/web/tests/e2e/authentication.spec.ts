@@ -26,7 +26,10 @@ test("active staff can sign in, view list/detail, and sign out", async ({ page }
   await expect(page.getByText("Waiting for activation requirement")).toBeVisible();
 
   await page.getByRole("link", { name: "Atlas Fitness Studio" }).click();
-  await expect(page.getByRole("heading", { name: "Atlas Fitness Studio" })).toBeVisible();
+  await expect(page).toHaveURL(/\/onboardings\/[0-9a-f-]+$/, { timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Atlas Fitness Studio" })).toBeVisible({
+    timeout: 15_000,
+  });
   await expect(page.getByRole("heading", { name: "Commercial Gate", exact: true })).toBeVisible();
   await expect(page.getByText("USD 2000.00", { exact: false })).toBeVisible();
 
@@ -49,13 +52,15 @@ for (const [email, password] of [
   });
 }
 
-test("Delivery can view the onboarding but commercial rows are not exposed", async ({ page }) => {
+test("Delivery cannot open an unassigned pre-project-ready onboarding", async ({ page }) => {
   await signIn(page, "delivery@northstar.test");
   await expect(page).toHaveURL(/\/dashboard$/);
   await page.goto("/onboardings");
   await page.getByRole("link", { name: "Atlas Fitness Studio" }).click();
 
-  await expect(page.getByTestId("commercial-restricted")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "The requested onboarding record does not exist." }),
+  ).toBeVisible();
   await expect(page.getByText("NS-2026-0001")).toHaveCount(0);
   await expect(page.getByText("USD 2000.00", { exact: false })).toHaveCount(0);
 });

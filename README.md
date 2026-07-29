@@ -91,6 +91,20 @@ durable completion events.
   exact latest version; Operations sees metadata only.
 - Approval of the last mandatory item atomically moves the onboarding to
   `CLIENT_REQUIREMENTS_COMPLETE` and leaves exactly one `CLIENT_REQUIREMENTS_COMPLETED` event
+
+## Phase 6 behavior
+
+- A dedicated worker identity claims only the four Phase 6 event types and passes identifiers to
+  operation-specific application endpoints.
+- Scheduling uses local date/time plus an IANA timezone, rejects nonexistent times, and requires
+  an earlier/later choice for repeated times.
+- The application freezes and sends revisioned kickoff, Delivery handoff, and cancellation email;
+  uncertain delivery never resends automatically.
+- Kickoff completion creates one frozen, fingerprinted Delivery handoff and moves the onboarding
+  to `PROJECT_READY`.
+- Assigned active Delivery users see only approved current client content and the frozen handoff.
+  Acknowledgment completes the onboarding, calculates the snapshotted SLA, and revokes client
+  access.
   pending for the unimplemented Phase 6.
 
 ## Architecture boundary
@@ -232,6 +246,10 @@ rejection.
   delivery.
 - `POST /api/internal/automation/client-access-email/deliver` reconstructs and sends a frozen
   secure-access email without returning the bearer link to n8n.
+- `POST /api/internal/automation/phase6/kickoff/initialize` handles the completion event and
+  creates the pending Kickoff atomically.
+- `POST /api/internal/automation/phase6/notifications/deliver` performs application-owned Phase 6
+  SMTP delivery.
 
 All internal automation endpoints require a dedicated bearer token plus a timestamped HMAC over
 the exact method, path and query, timestamp, and raw-body hash. Authentication runs before JSON
@@ -258,6 +276,7 @@ Build-time validation and runtime readiness are intentionally separate:
 | `pnpm.cmd test:integration` | Run real PostgreSQL integration and role-isolation tests.    |
 | `pnpm.cmd test:e2e`         | Run Playwright authentication and protected-page tests.      |
 | `pnpm.cmd secret:scan`      | Scan repository content with Secretlint.                     |
+| `pnpm.cmd smoke:phase6`     | Run the local Phase 6 n8n + Mailpit end-to-end smoke.        |
 | `pnpm.cmd verify`           | Run deterministic checks; DB and browser tests are separate. |
 | `pnpm.cmd docker:config`    | Validate rendered Compose configuration using `.env`.        |
 | `pnpm.cmd docker:up`        | Build and start the full stack using `.env`.                 |

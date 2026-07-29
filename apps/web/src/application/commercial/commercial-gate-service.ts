@@ -53,6 +53,7 @@ export async function refreshCommercialState(
         where: { status: "OPEN" },
         select: { id: true },
       },
+      servicePackage: { select: { onboardingSlaTargetHours: true } },
     },
   });
 
@@ -156,6 +157,7 @@ export async function refreshCommercialState(
         ? {
             status: OnboardingStatus.READY_FOR_ONBOARDING,
             activatedAt: now,
+            slaTargetHoursSnapshot: onboarding.servicePackage?.onboardingSlaTargetHours ?? null,
           }
         : {}),
       ...(businessChanged ? { version: { increment: 1 } } : {}),
@@ -224,6 +226,7 @@ export async function refreshCommercialState(
       newValue: {
         status: OnboardingStatus.READY_FOR_ONBOARDING,
         activatedAt: now.toISOString(),
+        slaTargetHoursSnapshot: onboarding.servicePackage?.onboardingSlaTargetHours ?? null,
       },
       metadata: { triggeredByActorId: input.triggeredByActorId },
       correlationId: input.correlationId,

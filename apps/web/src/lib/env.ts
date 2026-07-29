@@ -49,6 +49,12 @@ export const serverEnvironmentSchema = z
     AUTOMATION_PHASE5_HMAC_SECRET: z
       .string()
       .min(32, "AUTOMATION_PHASE5_HMAC_SECRET must contain at least 32 characters"),
+    AUTOMATION_PHASE6_SERVICE_TOKEN: z
+      .string()
+      .min(32, "AUTOMATION_PHASE6_SERVICE_TOKEN must contain at least 32 characters"),
+    AUTOMATION_PHASE6_HMAC_SECRET: z
+      .string()
+      .min(32, "AUTOMATION_PHASE6_HMAC_SECRET must contain at least 32 characters"),
     PROVISIONING_TASK_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
     AUTOMATION_SIGNATURE_MAX_AGE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     AUTH_SECRET: z.string().min(32, "AUTH_SECRET must contain at least 32 characters"),
@@ -102,6 +108,30 @@ export const serverEnvironmentSchema = z
       "Phase 5 must use a distinct HMAC credential",
     );
     distinct(
+      environment.AUTOMATION_PHASE6_SERVICE_TOKEN,
+      environment.AUTOMATION_SERVICE_TOKEN,
+      "AUTOMATION_PHASE6_SERVICE_TOKEN",
+      "Phase 6 must use a distinct service credential",
+    );
+    distinct(
+      environment.AUTOMATION_PHASE6_SERVICE_TOKEN,
+      environment.AUTOMATION_PHASE5_SERVICE_TOKEN,
+      "AUTOMATION_PHASE6_SERVICE_TOKEN",
+      "Phase 6 must not reuse the Phase 5 service credential",
+    );
+    distinct(
+      environment.AUTOMATION_PHASE6_HMAC_SECRET,
+      environment.AUTOMATION_HMAC_SECRET,
+      "AUTOMATION_PHASE6_HMAC_SECRET",
+      "Phase 6 must use a distinct HMAC credential",
+    );
+    distinct(
+      environment.AUTOMATION_PHASE6_HMAC_SECRET,
+      environment.AUTOMATION_PHASE5_HMAC_SECRET,
+      "AUTOMATION_PHASE6_HMAC_SECRET",
+      "Phase 6 must not reuse the Phase 5 HMAC credential",
+    );
+    distinct(
       environment.PUBLIC_RATE_LIMIT_HMAC_SECRET,
       environment.CLIENT_SESSION_SECRET,
       "PUBLIC_RATE_LIMIT_HMAC_SECRET",
@@ -135,6 +165,8 @@ export function parseServerEnvironment(
     AUTOMATION_SERVICE_TOKEN: source.AUTOMATION_SERVICE_TOKEN,
     AUTOMATION_PHASE5_SERVICE_TOKEN: source.AUTOMATION_PHASE5_SERVICE_TOKEN,
     AUTOMATION_PHASE5_HMAC_SECRET: source.AUTOMATION_PHASE5_HMAC_SECRET,
+    AUTOMATION_PHASE6_SERVICE_TOKEN: source.AUTOMATION_PHASE6_SERVICE_TOKEN,
+    AUTOMATION_PHASE6_HMAC_SECRET: source.AUTOMATION_PHASE6_HMAC_SECRET,
     PROVISIONING_TASK_MAX_ATTEMPTS: source.PROVISIONING_TASK_MAX_ATTEMPTS,
     AUTOMATION_SIGNATURE_MAX_AGE_SECONDS: source.AUTOMATION_SIGNATURE_MAX_AGE_SECONDS,
     AUTH_SECRET: source.AUTH_SECRET,

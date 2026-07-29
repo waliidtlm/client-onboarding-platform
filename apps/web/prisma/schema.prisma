@@ -198,6 +198,27 @@ enum FileUploadIntentStatus {
   EXPIRED
 }
 
+enum KickoffStatus {
+  PENDING
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum DeliveryHandoffStatus {
+  DRAFT
+  READY
+  NOTIFIED
+  ACKNOWLEDGED
+  CANCELLED
+}
+
+enum SlaResult {
+  MET
+  MISSED
+  NOT_CONFIGURED
+}
+
 model User {
   id                               String                @id @default(uuid()) @db.Uuid
   name                             String                @db.VarChar(200)
@@ -222,6 +243,12 @@ model User {
   resolvedAutomationEvents         AutomationEvent[]      @relation("AutomationEventResolvedBy")
   approvedClientRequirements       ClientRequirement[]     @relation("ClientRequirementApprovedBy")
   reviewedRequirementSubmissions   RequirementSubmission[] @relation("RequirementSubmissionReviewedBy")
+  completedKickoffs                Kickoff[]                @relation("KickoffCompletedBy")
+  waivedKickoffInvitations         Kickoff[]                @relation("KickoffInvitationWaivedBy")
+  cancelledKickoffs                Kickoff[]                @relation("KickoffCancelledBy")
+  preparedDeliveryHandoffs         DeliveryHandoff[]        @relation("DeliveryHandoffPreparedBy")
+  assignedDeliveryHandoffs         DeliveryHandoff[]        @relation("DeliveryHandoffAssignedTo")
+  acknowledgedDeliveryHandoffs     DeliveryHandoff[]        @relation("DeliveryHandoffAcknowledgedBy")
 }
 
 model Client {
@@ -243,6 +270,7 @@ model ServicePackage {
   isActive              Boolean                       @default(true)
   activationType        ActivationType
   activationValue       Decimal                       @db.Decimal(19, 4)
+  onboardingSlaTargetHours Int?
   createdAt             DateTime                      @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime                      @updatedAt @db.Timestamptz(3)
   provisioningTemplates PackageProvisioningTemplate[]
@@ -320,6 +348,8 @@ model Onboarding {
   requirementsCompletedAt     DateTime?                   @db.Timestamptz(3)
   projectReadyAt              DateTime?                   @db.Timestamptz(3)
   completedAt                 DateTime?                   @db.Timestamptz(3)
+  slaTargetHoursSnapshot      Int?
+  slaResult                   SlaResult?
   cancelledAt                 DateTime?                   @db.Timestamptz(3)
   cancellationReason          String?
   version                     Int                         @default(1)
@@ -345,6 +375,8 @@ model Onboarding {
   clientAccessTokens          ClientAccessToken[]
   fileUploadIntents           FileUploadIntent[]
   fileAssets                  FileAsset[]
+  kickoff                     Kickoff?
+  deliveryHandoff             DeliveryHandoff?
   internalReadinessApprovedById String?                   @db.Uuid
   internalReadinessApprovedAt DateTime?                   @db.Timestamptz(3)
   internalReadinessNote       String?
@@ -592,12 +624,85 @@ model NotificationLog {
   fragmentFormatSnapshot String?         @db.VarChar(100)
   tokenExpiresAtSnapshot DateTime?       @db.Timestamptz(3)
   tokenSigningKeyVersionSnapshot Int?
+  kickoffId          String?             @db.Uuid
+  deliveryHandoffId  String?             @db.Uuid
+  businessRevision   Int?
+  requestFingerprint String?             @db.Char(64)
   createdAt          DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
+  updatedAt          DateTime            @default(now()) @updatedAt @db.Timestamptz(3)
   onboarding         Onboarding          @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
   clientAccessToken  ClientAccessToken?  @relation(fields: [clientAccessTokenId], references: [id], onDelete: Restrict)
+  kickoff            Kickoff?            @relation(fields: [kickoffId], references: [id], onDelete: Restrict)
+  deliveryHandoff    DeliveryHandoff?    @relation(fields: [deliveryHandoffId], references: [id], onDelete: Restrict)
 
   @@index([onboardingId, createdAt])
+  @@index([kickoffId, businessRevision, createdAt], map: "NotificationLog_kickoff_revision_idx")
+  @@index([deliveryHandoffId, businessRevision, createdAt], map: "NotificationLog_handoff_revision_idx")
+}
+
+model Kickoff {
+  id                             String             @id @default(uuid()) @db.Uuid
+  onboardingId                   String             @unique @db.Uuid
+  status                         KickoffStatus      @default(PENDING)
+  scheduledStartAt               DateTime?          @db.Timestamptz(3)
+  timezone                       String?            @db.VarChar(100)
+  meetingUrl                     String?            @db.VarChar(2048)
+  meetingLocation                String?            @db.VarChar(500)
+  scheduleRevision               Int                @default(0)
+  completedAt                    DateTime?           @db.Timestamptz(3)
+  completedById                  String?            @db.Uuid
+  outcomeNotes                   String?
+  completionIdempotencyKey       String?            @unique @db.VarChar(255)
+  completionFingerprint          String?            @db.Char(64)
+  completionTimingOverrideReason String?
+  invitationWaivedAt             DateTime?           @db.Timestamptz(3)
+  invitationWaivedById           String?             @db.Uuid
+  invitationWaiverReason         String?
+  invitationWaivedForRevision    Int?
+  cancelledAt                    DateTime?           @db.Timestamptz(3)
+  cancelledById                  String?             @db.Uuid
+  cancellationReason             String?
+  version                        Int                 @default(1)
+  createdAt                      DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt                      DateTime            @updatedAt @db.Timestamptz(3)
+  onboarding                     Onboarding          @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  completedBy                    User?               @relation("KickoffCompletedBy", fields: [completedById], references: [id], onDelete: Restrict)
+  invitationWaivedBy             User?               @relation("KickoffInvitationWaivedBy", fields: [invitationWaivedById], references: [id], onDelete: Restrict)
+  cancelledBy                    User?               @relation("KickoffCancelledBy", fields: [cancelledById], references: [id], onDelete: Restrict)
+  notifications                  NotificationLog[]
+}
+
+model DeliveryHandoff {
+  id                              String                @id @default(uuid()) @db.Uuid
+  onboardingId                    String                @unique @db.Uuid
+  preparedById                    String?               @db.Uuid
+  assignedDeliveryUserId          String?               @db.Uuid
+  status                          DeliveryHandoffStatus @default(DRAFT)
+  summary                         String?
+  riskNotes                       String?
+  nextActions                     String?
+  sourceSnapshot                  Json?
+  sourceFingerprint               String?               @db.Char(64)
+  summarySchemaVersion            Int?
+  assignmentRevision              Int                   @default(0)
+  preparedAt                      DateTime?              @db.Timestamptz(3)
+  acknowledgedAt                  DateTime?              @db.Timestamptz(3)
+  acknowledgedById                String?                @db.Uuid
+  acknowledgmentNotes             String?
+  acknowledgmentIdempotencyKey    String?               @unique @db.VarChar(255)
+  acknowledgmentFingerprint       String?               @db.Char(64)
+  acknowledgedAsAdminException    Boolean               @default(false)
+  acknowledgmentExceptionReason   String?
+  cancelledAt                     DateTime?              @db.Timestamptz(3)
+  cancellationReason              String?
+  version                         Int                    @default(1)
+  createdAt                       DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt                       DateTime               @updatedAt @db.Timestamptz(3)
+  onboarding                      Onboarding             @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  preparedBy                      User?                  @relation("DeliveryHandoffPreparedBy", fields: [preparedById], references: [id], onDelete: Restrict)
+  assignedDeliveryUser            User?                  @relation("DeliveryHandoffAssignedTo", fields: [assignedDeliveryUserId], references: [id], onDelete: Restrict)
+  acknowledgedBy                  User?                  @relation("DeliveryHandoffAcknowledgedBy", fields: [acknowledgedById], references: [id], onDelete: Restrict)
+  notifications                   NotificationLog[]
 }
 
 model ProvisioningTask {
@@ -648,11 +753,11 @@ model ProvisioningTaskAttempt {
   startedAt          DateTime                      @db.Timestamptz(3)
   completedAt        DateTime?                     @db.Timestamptz(3)
   createdAt          DateTime                      @default(now()) @db.Timestamptz(3)
-  provisioningTask   ProvisioningTask              @relation(fields: [provisioningTaskId], references: [id], onDelete: Restrict)
-  automationRun      AutomationRun                 @relation(fields: [automationRunId], references: [id], onDelete: Restrict)
+  provisioningTask   ProvisioningTask              @relation(fields: [provisioningTaskId], references: [id], onDelete: Restrict, map: "ProvisioningTaskAttempt_taskId_fkey")
+  automationRun      AutomationRun                 @relation(fields: [automationRunId], references: [id], onDelete: Restrict, map: "ProvisioningTaskAttempt_runId_fkey")
 
-  @@unique([provisioningTaskId, attemptNumber])
-  @@index([provisioningTaskId, createdAt])
+  @@unique([provisioningTaskId, attemptNumber], map: "ProvisioningTaskAttempt_task_attempt_key")
+  @@index([provisioningTaskId, createdAt], map: "ProvisioningTaskAttempt_task_created_idx")
 }
 
 model SandboxProvisionedResource {
@@ -663,7 +768,7 @@ model SandboxProvisionedResource {
   displayName        String           @db.VarChar(300)
   externalReference  String           @unique @db.VarChar(500)
   createdAt          DateTime         @default(now()) @db.Timestamptz(3)
-  provisioningTask   ProvisioningTask @relation(fields: [provisioningTaskId], references: [id], onDelete: Restrict)
+  provisioningTask   ProvisioningTask @relation(fields: [provisioningTaskId], references: [id], onDelete: Restrict, map: "SandboxProvisionedResource_taskId_fkey")
 }
 
 model ClientRequirement {
@@ -718,7 +823,7 @@ model RequirementSubmission {
   files                    FileAsset[]
 
   @@unique([requirementId, submissionVersion])
-  @@unique([requirementId, submissionIdempotencyKey])
+  @@unique([requirementId, submissionIdempotencyKey], map: "RequirementSubmission_requirementId_submissionIdempotencyKey_ke")
   @@index([requirementId, createdAt])
 }
 
@@ -776,7 +881,7 @@ model FileUploadIntent {
   requirement         ClientRequirement      @relation(fields: [requirementId], references: [id], onDelete: Restrict)
   fileAsset           FileAsset?
 
-  @@unique([clientAccessTokenId, idempotencyKey])
+  @@unique([clientAccessTokenId, idempotencyKey], map: "FileUploadIntent_token_idempotency_key")
   @@index([status, expiresAt])
   @@index([onboardingId, requirementId])
 }
@@ -802,7 +907,7 @@ model FileAsset {
   requirementSubmission   RequirementSubmission? @relation(fields: [requirementSubmissionId], references: [id], onDelete: Restrict)
 
   @@index([onboardingId, requirementId])
-  @@index([requirementSubmissionId, displayOrder])
+  @@index([requirementSubmissionId, displayOrder], map: "FileAsset_submission_display_idx")
 }
 
 model PublicRateLimitBucket {
@@ -814,6 +919,6 @@ model PublicRateLimitBucket {
   expiresAt        DateTime @db.Timestamptz(3)
   updatedAt        DateTime @updatedAt @db.Timestamptz(3)
 
-  @@unique([scope, subjectHash, windowStartedAt])
+  @@unique([scope, subjectHash, windowStartedAt], map: "PublicRateLimitBucket_scope_subject_window_key")
   @@index([expiresAt])
 }

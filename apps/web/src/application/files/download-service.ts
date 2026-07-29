@@ -46,7 +46,11 @@ export async function createStaffFileDownload(
   database: PrismaClient = prisma,
 ) {
   return executeService(async () => {
-    const actor = await requireActor(database, actorId, [Role.ADMIN, Role.PROJECT_MANAGER]);
+    const actor = await requireActor(database, actorId, [
+      Role.ADMIN,
+      Role.PROJECT_MANAGER,
+      Role.DELIVERY,
+    ]);
     const asset = await database.fileAsset.findFirst({
       where: { id: assetId, requirementSubmissionId: { not: null } },
       select: {
@@ -54,8 +58,22 @@ export async function createStaffFileDownload(
         originalFilename: true,
         onboarding: {
           select: {
+            status: true,
             projectManagerId: true,
             projectManager: { select: { isActive: true } },
+            deliveryHandoff: {
+              select: {
+                assignedDeliveryUserId: true,
+                status: true,
+              },
+            },
+          },
+        },
+        requirementSubmission: {
+          select: {
+            submissionVersion: true,
+            reviewDecision: true,
+            requirement: { select: { currentSubmissionVersion: true, status: true } },
           },
         },
       },
@@ -66,6 +84,23 @@ export async function createStaffFileDownload(
       (asset.onboarding.projectManagerId !== actor.id || !asset.onboarding.projectManager?.isActive)
     ) {
       reject("ACCESS_DENIED", "Only the assigned active Project Manager may read this file.");
+    }
+    if (
+      actor.role === Role.DELIVERY &&
+      (asset.onboarding.deliveryHandoff?.assignedDeliveryUserId !== actor.id ||
+        !["READY", "NOTIFIED", "ACKNOWLEDGED"].includes(
+          asset.onboarding.deliveryHandoff?.status ?? "",
+        ) ||
+        !["PROJECT_READY", "COMPLETED"].includes(asset.onboarding.status) ||
+        asset.requirementSubmission?.reviewDecision !== "APPROVED" ||
+        asset.requirementSubmission.submissionVersion !==
+          asset.requirementSubmission.requirement.currentSubmissionVersion ||
+        asset.requirementSubmission.requirement.status !== "APPROVED")
+    ) {
+      reject(
+        "ACCESS_DENIED",
+        "Only the assigned active Delivery user may read this approved file.",
+      );
     }
     return signedAssetUrl(asset);
   });

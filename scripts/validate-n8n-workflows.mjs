@@ -4,10 +4,8 @@ import path from "node:path";
 const workflowsDirectory = path.resolve("automation/n8n/workflows");
 const files = (await readdir(workflowsDirectory)).filter((file) => file.endsWith(".json")).sort();
 
-if (files.length !== 4) {
-  throw new Error(
-    `Expected the retained Phase 3 consumer, Phase 4 consumer, Phase 5 consumer, and shared handler; found ${files.length}`,
-  );
+if (files.length !== 5) {
+  throw new Error(`Expected the Phase 3–6 consumers and shared handler; found ${files.length}`);
 }
 
 const ids = new Set();
@@ -53,18 +51,51 @@ const phase4 = JSON.parse(
 const phase5 = JSON.parse(
   await readFile(path.join(workflowsDirectory, "phase5-client-access-email.json"), "utf8"),
 );
+const phase6 = JSON.parse(
+  await readFile(path.join(workflowsDirectory, "phase6-kickoff-delivery-handoff.json"), "utf8"),
+);
 if (phase4.settings?.errorWorkflow !== "phase3-automation-error-handler") {
   throw new Error("The Phase 4 consumer must reference the shared error workflow");
 }
-if (phase4.active !== false || phase5.active !== false || consumer.active !== false) {
+if (
+  phase4.active !== false ||
+  phase5.active !== false ||
+  phase6.active !== false ||
+  consumer.active !== false
+) {
   throw new Error("All polling consumer exports must remain inactive");
 }
 if (
   phase4.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1 ||
   consumer.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1 ||
-  phase5.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1
+  phase5.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1 ||
+  phase6.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1
 ) {
   throw new Error("Each retained consumer export must have exactly one polling trigger");
+}
+const phase6Source = JSON.stringify(phase6);
+for (const eventType of [
+  "CLIENT_REQUIREMENTS_COMPLETED",
+  "KICKOFF_INVITATION_REQUESTED",
+  "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED",
+  "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED",
+]) {
+  if (!phase6Source.includes(eventType)) {
+    throw new Error(`The Phase 6 workflow is missing capability ${eventType}`);
+  }
+}
+if (
+  !phase6Source.includes("AUTOMATION_PHASE6_SERVICE_TOKEN") ||
+  /recipient|textContent|htmlContent|meetingUrl|outcomeNotes|sourceSnapshot/.test(phase6Source)
+) {
+  throw new Error("The Phase 6 workflow must dispatch identifiers without business content");
+}
+if (
+  phase6.settings?.saveDataErrorExecution !== "none" ||
+  phase6.settings?.saveDataSuccessExecution !== "none" ||
+  phase6.settings?.saveManualExecutions !== false
+) {
+  throw new Error("The Phase 6 workflow must disable execution-data persistence");
 }
 const phase5Source = JSON.stringify(phase5);
 if (
@@ -97,5 +128,5 @@ for (const node of phase4.nodes) {
 }
 
 console.log(
-  `Validated ${files.length} inactive exports including the isolated Phase 5 email consumer.`,
+  `Validated ${files.length} inactive exports including isolated Phase 5 and Phase 6 consumers.`,
 );

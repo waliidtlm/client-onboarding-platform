@@ -6,6 +6,9 @@ export const SUPPORTED_AUTOMATION_EVENT_TYPES = [
   "WELCOME_EMAIL_REQUESTED",
   "CLIENT_ACCESS_EMAIL_REQUESTED",
   "CLIENT_REQUIREMENTS_COMPLETED",
+  "KICKOFF_INVITATION_REQUESTED",
+  "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED",
+  "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED",
 ] as const;
 
 export type SupportedAutomationEventType = (typeof SUPPORTED_AUTOMATION_EVENT_TYPES)[number];
@@ -62,6 +65,17 @@ export function automationEventPayloadIsValid(
   }
   if (eventType === "CLIENT_REQUIREMENTS_COMPLETED") {
     return Object.keys(record).length === 0;
+  }
+  if (
+    eventType === "KICKOFF_INVITATION_REQUESTED" ||
+    eventType === "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED" ||
+    eventType === "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED"
+  ) {
+    return (
+      Object.keys(record).length === 1 &&
+      typeof record.notificationId === "string" &&
+      /^[0-9a-f-]{36}$/i.test(record.notificationId)
+    );
   }
   return false;
 }

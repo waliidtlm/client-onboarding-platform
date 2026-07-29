@@ -44,7 +44,8 @@ describe("client capability tokens", () => {
       signingKeyVersion: 1,
       signingKey: key,
     });
-    const tampered = `${created.rawToken.slice(0, -1)}A`;
+    const finalCharacter = created.rawToken.at(-1);
+    const tampered = `${created.rawToken.slice(0, -1)}${finalCharacter === "A" ? "B" : "A"}`;
     expect(parseCapabilityToken("not-a-token")).toBeNull();
     expect(
       verifyCapabilityToken(

@@ -111,7 +111,10 @@ async function markUncertainEmailIfSending(
   const event = await tx.automationEvent.findUnique({ where: { id: eventId } });
   if (
     event?.eventType !== "WELCOME_EMAIL_REQUESTED" &&
-    event?.eventType !== "CLIENT_ACCESS_EMAIL_REQUESTED"
+    event?.eventType !== "CLIENT_ACCESS_EMAIL_REQUESTED" &&
+    event?.eventType !== "KICKOFF_INVITATION_REQUESTED" &&
+    event?.eventType !== "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED" &&
+    event?.eventType !== "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED"
   ) {
     return false;
   }
@@ -240,6 +243,10 @@ function envelopeError(
       "PROVISIONING_TASK_REQUESTED",
       "WELCOME_EMAIL_REQUESTED",
       "CLIENT_ACCESS_EMAIL_REQUESTED",
+      "CLIENT_REQUIREMENTS_COMPLETED",
+      "KICKOFF_INVITATION_REQUESTED",
+      "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED",
+      "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED",
     ].includes(event.eventType) ||
     event.aggregateType !== "ONBOARDING"
   ) {

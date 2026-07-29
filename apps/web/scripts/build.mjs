@@ -7,6 +7,8 @@ const buildOnlyEnvironment = {
   AUTOMATION_SERVICE_TOKEN: "build-only-automation-token-not-used-runtime",
   AUTOMATION_HMAC_SECRET: "build-only-automation-hmac-not-used-runtime",
   AUTOMATION_PHASE5_SERVICE_TOKEN: "build-only-phase5-service-token-not-runtime",
+  AUTOMATION_PHASE6_SERVICE_TOKEN: "build-only-phase6-service-token-not-runtime",
+  AUTOMATION_PHASE6_HMAC_SECRET: "build-only-phase6-hmac-secret-not-runtime",
   AUTOMATION_PHASE5_HMAC_SECRET: "build-only-phase5-hmac-secret-not-runtime",
   CLIENT_ACCESS_ACTIVE_SIGNING_KEY_VERSION: "1",
   CLIENT_ACCESS_SIGNING_KEYS: '{"1":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}',

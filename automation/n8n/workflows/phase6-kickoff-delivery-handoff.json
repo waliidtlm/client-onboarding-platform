@@ -1,0 +1,58 @@
+{
+  "name": "Phase 6 Kickoff and Delivery Handoff",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a4892ee6-51f1-485d-a495-2fd22794f928",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, -80]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 1 }]
+        }
+      },
+      "id": "fddc055a-3fae-49ef-b7d0-4312424a0fa6",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_PHASE6_SERVICE_TOKEN,secret=$env.AUTOMATION_PHASE6_HMAC_SECRET,workerId=$env.AUTOMATION_PHASE6_WORKER_ID;if(!base||!token||!secret||!workerId)throw new Error('AUTOMATION_CONFIGURATION_INVALID');async function send(path,body){const text=JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`POST\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;return await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method:'POST',headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',chunk=>{if(value.length<65536)value+=chunk;});res.on('end',()=>{let parsed=null;try{parsed=value?JSON.parse(value):null;}catch{}resolve({status:res.statusCode||0,body:parsed});});});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});}const claim=await send('/api/internal/automation/claim',{requestId:crypto.randomUUID(),workerId,workflowName:'Phase 6 Kickoff and Delivery Handoff',supportedEventTypes:['CLIENT_REQUIREMENTS_COMPLETED','KICKOFF_INVITATION_REQUESTED','DELIVERY_HANDOFF_NOTIFICATION_REQUESTED','PHASE6_CANCELLATION_NOTIFICATION_REQUESTED']});if(claim.status===204)return[{json:{outcome:'EMPTY'}}];if(claim.status<200||claim.status>=300||claim.body?.kind!=='CLAIMED')throw new Error('AUTOMATION_CLAIM_FAILED');const run={eventId:claim.body.event.eventId,runId:claim.body.run.runId,idempotencyKey:claim.body.run.idempotencyKey,workerId,n8nExecutionId:String($execution.id)},path=claim.body.event.eventType==='CLIENT_REQUIREMENTS_COMPLETED'?'/api/internal/automation/phase6/kickoff/initialize':'/api/internal/automation/phase6/notifications/deliver',result=await send(path,run);if(result.status<200||result.status>=300)throw new Error('PHASE6_APPLICATION_OPERATION_FAILED');return[{json:{outcome:'COMPLETED',eventId:run.eventId,runId:run.runId}}];"
+      },
+      "id": "44cf1a71-a929-4ad3-89bc-3eea9870943c",
+      "name": "Claim and Dispatch IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Claim and Dispatch IDs", "type": "main", "index": 0 }]]
+    },
+    "Every Minute": {
+      "main": [[{ "node": "Claim and Dispatch IDs", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "phase3-automation-error-handler",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-07-29T00:00:00.000Z",
+  "versionId": "b25461cd-3f55-4c60-a099-f3413461ea55",
+  "active": false,
+  "id": "phase6-kickoff-delivery-handoff"
+}

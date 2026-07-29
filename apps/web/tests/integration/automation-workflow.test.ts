@@ -367,7 +367,7 @@ describe("Phase 3 durable automation processing", () => {
     );
     expect(completionEvent).toMatchObject({
       ok: false,
-      error: { code: "INVALID_INPUT" },
+      error: { code: "ACCESS_DENIED" },
     });
   });
 

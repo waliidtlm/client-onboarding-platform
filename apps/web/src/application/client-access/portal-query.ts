@@ -25,6 +25,16 @@ export async function loadClientPortal(
       servicePackageNameSnapshot: true,
       clientAccessDeliveredAt: true,
       requirementsCompletedAt: true,
+      projectReadyAt: true,
+      kickoff: {
+        select: {
+          status: true,
+          scheduledStartAt: true,
+          timezone: true,
+          meetingUrl: true,
+          meetingLocation: true,
+        },
+      },
       client: { select: { companyName: true } },
       clientRequirements: {
         orderBy: { sequence: "asc" },
@@ -66,6 +76,8 @@ export async function loadClientPortal(
     },
   });
   if (!onboarding) return null;
+  const phase6ReadOnly =
+    onboarding.status === "KICKOFF_PENDING" || onboarding.status === "PROJECT_READY";
   return {
     id: onboarding.id,
     status: onboarding.status,
@@ -73,8 +85,27 @@ export async function loadClientPortal(
     packageName: onboarding.servicePackageNameSnapshot ?? "Service package",
     clientAccessDeliveredAt: onboarding.clientAccessDeliveredAt?.toISOString() ?? null,
     requirementsCompletedAt: onboarding.requirementsCompletedAt?.toISOString() ?? null,
+    projectReadyAt: onboarding.projectReadyAt?.toISOString() ?? null,
+    kickoff: onboarding.kickoff
+      ? {
+          status: onboarding.kickoff.status,
+          scheduledStartAt: onboarding.kickoff.scheduledStartAt?.toISOString() ?? null,
+          timezone: onboarding.kickoff.timezone,
+          meetingUrl: onboarding.kickoff.meetingUrl
+            ? validateHttpsUrl(onboarding.kickoff.meetingUrl)
+            : null,
+          meetingLocation: onboarding.kickoff.meetingLocation,
+        }
+      : null,
     requirements: onboarding.clientRequirements.map((requirement) => {
-      const latest = requirement.submissions[0];
+      const visibleSubmissions = phase6ReadOnly
+        ? requirement.submissions.filter(
+            (submission) =>
+              submission.reviewDecision === "APPROVED" &&
+              submission.submissionVersion === requirement.currentSubmissionVersion,
+          )
+        : requirement.submissions;
+      const latest = visibleSubmissions[0];
       const mapSubmission = (submission: (typeof requirement.submissions)[number]) => ({
         ...submission,
         urlValue: submission.urlValue ? validateHttpsUrl(submission.urlValue) : null,
@@ -97,7 +128,7 @@ export async function loadClientPortal(
         version: requirement.version,
         currentSubmissionVersion: requirement.currentSubmissionVersion,
         latestSubmission: latest ? mapSubmission(latest) : null,
-        previousSubmissions: requirement.submissions.slice(1).map(mapSubmission),
+        previousSubmissions: phase6ReadOnly ? [] : visibleSubmissions.slice(1).map(mapSubmission),
       };
     }),
   };

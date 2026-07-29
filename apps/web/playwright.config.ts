@@ -45,6 +45,10 @@ export default defineConfig({
         process.env.AUTOMATION_PHASE5_SERVICE_TOKEN ?? "playwright-phase5-service-token-000000000",
       AUTOMATION_PHASE5_HMAC_SECRET:
         process.env.AUTOMATION_PHASE5_HMAC_SECRET ?? "playwright-phase5-hmac-secret-00000000000",
+      AUTOMATION_PHASE6_SERVICE_TOKEN:
+        process.env.AUTOMATION_PHASE6_SERVICE_TOKEN ?? "playwright-phase6-service-token-000000000",
+      AUTOMATION_PHASE6_HMAC_SECRET:
+        process.env.AUTOMATION_PHASE6_HMAC_SECRET ?? "playwright-phase6-hmac-secret-00000000000",
       CLIENT_ACCESS_ACTIVE_SIGNING_KEY_VERSION:
         process.env.CLIENT_ACCESS_ACTIVE_SIGNING_KEY_VERSION ?? "1",
       CLIENT_ACCESS_SIGNING_KEYS:

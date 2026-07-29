@@ -12,7 +12,8 @@ export type AuthenticatedAutomationRequest =
     }>
   | Readonly<{ ok: false; response: Response }>;
 
-export type AutomationServiceIdentity = "PHASE4_PROVISIONING" | "PHASE5_ACCESS_EMAIL";
+export type AutomationServiceIdentity =
+  "PHASE4_PROVISIONING" | "PHASE5_ACCESS_EMAIL" | "PHASE6_HANDOFF";
 
 const identityCapabilities = {
   PHASE4_PROVISIONING: [
@@ -21,6 +22,12 @@ const identityCapabilities = {
     "WELCOME_EMAIL_REQUESTED",
   ],
   PHASE5_ACCESS_EMAIL: ["CLIENT_ACCESS_EMAIL_REQUESTED"],
+  PHASE6_HANDOFF: [
+    "CLIENT_REQUIREMENTS_COMPLETED",
+    "KICKOFF_INVITATION_REQUESTED",
+    "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED",
+    "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED",
+  ],
 } as const satisfies Record<AutomationServiceIdentity, readonly string[]>;
 
 export async function authenticateAutomationRequest(
@@ -54,6 +61,11 @@ export async function authenticateAutomationRequest(
       "PHASE5_ACCESS_EMAIL",
       environment.AUTOMATION_PHASE5_SERVICE_TOKEN,
       environment.AUTOMATION_PHASE5_HMAC_SECRET,
+    ],
+    [
+      "PHASE6_HANDOFF",
+      environment.AUTOMATION_PHASE6_SERVICE_TOKEN,
+      environment.AUTOMATION_PHASE6_HMAC_SECRET,
     ],
   ];
   const serviceIdentity = credentials.find(([identity, serviceToken, hmacSecret]) => {

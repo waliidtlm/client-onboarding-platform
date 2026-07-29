@@ -37,6 +37,14 @@ type Portal = {
   packageName: string;
   status: string;
   requirementsCompletedAt: string | null;
+  projectReadyAt: string | null;
+  kickoff: {
+    status: string;
+    scheduledStartAt: string | null;
+    timezone: string | null;
+    meetingUrl: string | null;
+    meetingLocation: string | null;
+  } | null;
   requirements: Requirement[];
 };
 
@@ -350,6 +358,28 @@ export function ClientPortal() {
       {portal.requirementsCompletedAt ? (
         <p className="notice notice-success">
           All required items have been approved. Your onboarding team will continue from here.
+        </p>
+      ) : null}
+      {portal.kickoff?.scheduledStartAt ? (
+        <section className="client-access-card">
+          <p className="eyebrow">Kickoff</p>
+          <h2>
+            {new Date(portal.kickoff.scheduledStartAt).toLocaleString(undefined, {
+              timeZone: portal.kickoff.timezone ?? undefined,
+            })}
+          </h2>
+          <p>{portal.kickoff.timezone}</p>
+          {portal.kickoff.meetingUrl ? (
+            <a href={portal.kickoff.meetingUrl} rel="noopener noreferrer" target="_blank">
+              Open meeting
+            </a>
+          ) : null}
+          {portal.kickoff.meetingLocation ? <p>{portal.kickoff.meetingLocation}</p> : null}
+        </section>
+      ) : null}
+      {portal.projectReadyAt ? (
+        <p className="notice notice-success">
+          Kickoff is complete and your project has moved to Delivery.
         </p>
       ) : null}
       <section className="client-requirements-list">

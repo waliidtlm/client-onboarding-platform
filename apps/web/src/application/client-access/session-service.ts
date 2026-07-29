@@ -16,6 +16,8 @@ export const CLIENT_SESSION_SECONDS = 30 * 60;
 const allowedClientStates = [
   OnboardingStatus.CLIENT_AWAITING_ACTION,
   OnboardingStatus.CLIENT_REQUIREMENTS_COMPLETE,
+  OnboardingStatus.KICKOFF_PENDING,
+  OnboardingStatus.PROJECT_READY,
 ] as const;
 
 export type ValidClientAccess = Readonly<{

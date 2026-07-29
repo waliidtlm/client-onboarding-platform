@@ -12,6 +12,18 @@ export const claimAutomationSchema = z
     requestId: z.uuid(),
     workerId: safeIdentifier.max(100),
     workflowName: z.string().trim().min(1).max(200),
+    supportedEventTypes: z
+      .array(
+        z.enum([
+          "ONBOARDING_ACTIVATED",
+          "PROVISIONING_TASK_REQUESTED",
+          "WELCOME_EMAIL_REQUESTED",
+          "CLIENT_ACCESS_EMAIL_REQUESTED",
+        ]),
+      )
+      .min(1)
+      .max(10)
+      .refine((value) => new Set(value).size === value.length, "Event types must be unique"),
   })
   .strict();
 

@@ -35,6 +35,13 @@ import {
   approveInternalReadiness,
   resolveWelcomeDeliveryUncertainty,
 } from "@/application/notifications/welcome-email-service";
+import { manageClientAccess, revokeClientAccess } from "@/application/client-access/access-service";
+import { resolveClientAccessEmailUncertainty } from "@/application/client-access/access-email-service";
+import {
+  approveClientRequirement,
+  beginRequirementReview,
+  rejectClientRequirement,
+} from "@/application/requirements/review-service";
 
 function text(formData: FormData, name: string): string {
   const value = formData.get(name);
@@ -481,5 +488,109 @@ export async function resolveWelcomeUncertaintyAction(formData: FormData): Promi
     }),
     onboardingId,
     "Welcome-email uncertainty resolved",
+  );
+}
+
+export async function manageClientAccessAction(formData: FormData): Promise<void> {
+  const onboardingId = text(formData, "onboardingId");
+  const staff = await requirePermission(
+    Permission.CLIENT_ACCESS_MANAGE,
+    `/onboardings/${onboardingId}`,
+  );
+  const operation = text(formData, "operation");
+  await finishPhase4(
+    await manageClientAccess({
+      actorId: staff.id,
+      onboardingId,
+      expectedVersion: integer(formData, "expectedVersion"),
+      issuanceKey: text(formData, "issuanceKey"),
+      operation,
+      correlationId: randomUUID(),
+    }),
+    onboardingId,
+    operation === "REISSUE" ? "Secure client access reissued" : "Secure client access issued",
+  );
+}
+
+export async function revokeClientAccessAction(formData: FormData): Promise<void> {
+  const onboardingId = text(formData, "onboardingId");
+  const staff = await requirePermission(
+    Permission.CLIENT_ACCESS_MANAGE,
+    `/onboardings/${onboardingId}`,
+  );
+  await finishPhase4(
+    await revokeClientAccess({
+      actorId: staff.id,
+      onboardingId,
+      expectedVersion: integer(formData, "expectedVersion"),
+      reason: text(formData, "reason"),
+      correlationId: randomUUID(),
+    }),
+    onboardingId,
+    "Secure client access revoked",
+  );
+}
+
+export async function beginRequirementReviewAction(formData: FormData): Promise<void> {
+  const onboardingId = text(formData, "onboardingId");
+  const staff = await requirePermission(
+    Permission.CLIENT_REQUIREMENTS_REVIEW,
+    `/onboardings/${onboardingId}`,
+  );
+  await finishPhase4(
+    await beginRequirementReview({
+      actorId: staff.id,
+      onboardingId,
+      requirementId: text(formData, "requirementId"),
+      expectedRequirementVersion: integer(formData, "expectedRequirementVersion"),
+      expectedSubmissionVersion: integer(formData, "expectedSubmissionVersion"),
+      correlationId: randomUUID(),
+    }),
+    onboardingId,
+    "Requirement review started",
+  );
+}
+
+export async function decideRequirementAction(formData: FormData): Promise<void> {
+  const onboardingId = text(formData, "onboardingId");
+  const staff = await requirePermission(
+    Permission.CLIENT_REQUIREMENTS_REVIEW,
+    `/onboardings/${onboardingId}`,
+  );
+  const input = {
+    actorId: staff.id,
+    onboardingId,
+    requirementId: text(formData, "requirementId"),
+    expectedRequirementVersion: integer(formData, "expectedRequirementVersion"),
+    expectedSubmissionVersion: integer(formData, "expectedSubmissionVersion"),
+    correlationId: randomUUID(),
+  };
+  const approve = text(formData, "decision") === "APPROVE";
+  await finishPhase4(
+    approve
+      ? await approveClientRequirement(input)
+      : await rejectClientRequirement({ ...input, reason: text(formData, "reason") }),
+    onboardingId,
+    approve ? "Requirement approved" : "Requirement returned to client",
+  );
+}
+
+export async function resolveClientAccessEmailAction(formData: FormData): Promise<void> {
+  const onboardingId = text(formData, "onboardingId");
+  const staff = await requirePermission(
+    Permission.CLIENT_ACCESS_EMAIL_RESOLVE,
+    `/onboardings/${onboardingId}`,
+  );
+  await finishPhase4(
+    await resolveClientAccessEmailUncertainty({
+      actorId: staff.id,
+      notificationId: text(formData, "notificationId"),
+      action: text(formData, "resolutionAction"),
+      providerReference: nullableText(formData, "providerReference"),
+      reason: text(formData, "reason"),
+      correlationId: randomUUID(),
+    }),
+    onboardingId,
+    "Client-access email uncertainty resolved",
   );
 }

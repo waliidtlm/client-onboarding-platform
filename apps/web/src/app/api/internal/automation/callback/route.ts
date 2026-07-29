@@ -12,7 +12,7 @@ import { logger } from "@/lib/logger";
 export async function POST(request: Request): Promise<Response> {
   const startedAt = Date.now();
   const requestId = randomUUID();
-  const authenticated = await authenticateAutomationRequest(request);
+  const authenticated = await authenticateAutomationRequest(request, ["PHASE4_PROVISIONING"]);
   if (!authenticated.ok) return authenticated.response;
   let parsed: unknown;
   try {

@@ -9,6 +9,7 @@ export async function appendAuditEvent(
     onboardingId: string;
     actorType: AuditActorType;
     actorId?: string | null;
+    clientAccessTokenId?: string | null;
     action: string;
     entityType: string;
     entityId: string;
@@ -23,6 +24,7 @@ export async function appendAuditEvent(
       onboardingId: input.onboardingId,
       actorType: input.actorType,
       actorId: input.actorId ?? null,
+      clientAccessTokenId: input.clientAccessTokenId ?? null,
       action: input.action,
       entityType: input.entityType,
       entityId: input.entityId,

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 
 import {
   AutomationClaimOutcome,
@@ -15,6 +16,7 @@ import type { AutomationClaimResult } from "@/application/automation/types";
 import {
   automationEventPayloadIsValid,
   automationRunIdempotencyKey,
+  canonicalizeJson,
   isSupportedAutomationEnvelope,
 } from "@/domain/automation/idempotency";
 
@@ -102,12 +104,17 @@ async function timeoutProvisioningAttempt(
   return requiresManualReview ? "MANUAL_REVIEW" : "RETRY";
 }
 
-async function markUncertainWelcomeIfSending(
+async function markUncertainEmailIfSending(
   tx: TransactionClient,
   eventId: string,
 ): Promise<boolean> {
   const event = await tx.automationEvent.findUnique({ where: { id: eventId } });
-  if (event?.eventType !== "WELCOME_EMAIL_REQUESTED") return false;
+  if (
+    event?.eventType !== "WELCOME_EMAIL_REQUESTED" &&
+    event?.eventType !== "CLIENT_ACCESS_EMAIL_REQUESTED"
+  ) {
+    return false;
+  }
   const payload =
     event.payload && typeof event.payload === "object" && !Array.isArray(event.payload)
       ? (event.payload as Record<string, unknown>)
@@ -127,11 +134,15 @@ async function markUncertainWelcomeIfSending(
   return updated.count === 1;
 }
 
-async function recoverExhaustedLeases(tx: TransactionClient): Promise<void> {
+async function recoverExhaustedLeases(
+  tx: TransactionClient,
+  supportedEventTypes: string[],
+): Promise<void> {
   const expired = await tx.$queryRaw<Array<{ id: string; currentRunId: string }>>(Prisma.sql`
     SELECT "id", "currentRunId"
     FROM "AutomationEvent"
     WHERE "status" = 'PROCESSING'::"AutomationEventStatus"
+      AND "eventType" IN (${Prisma.join(supportedEventTypes)})
       AND "leaseExpiresAt" <= CURRENT_TIMESTAMP
       AND "attemptCount" >= "maxAttempts"
       AND "currentRunId" IS NOT NULL
@@ -141,7 +152,7 @@ async function recoverExhaustedLeases(tx: TransactionClient): Promise<void> {
   `);
 
   for (const event of expired) {
-    const uncertainWelcome = await markUncertainWelcomeIfSending(tx, event.id);
+    const uncertainWelcome = await markUncertainEmailIfSending(tx, event.id);
     await terminalizeRun(tx, {
       runId: event.currentRunId,
       status: AutomationRunStatus.TIMED_OUT,
@@ -224,9 +235,12 @@ function envelopeError(
   event: LockedEvent,
 ): "INVALID_EVENT_INTEGRITY" | "INVALID_EVENT_SCHEMA" | "UNSUPPORTED_EVENT_TYPE" | null {
   if (
-    !["ONBOARDING_ACTIVATED", "PROVISIONING_TASK_REQUESTED", "WELCOME_EMAIL_REQUESTED"].includes(
-      event.eventType,
-    ) ||
+    ![
+      "ONBOARDING_ACTIVATED",
+      "PROVISIONING_TASK_REQUESTED",
+      "WELCOME_EMAIL_REQUESTED",
+      "CLIENT_ACCESS_EMAIL_REQUESTED",
+    ].includes(event.eventType) ||
     event.aggregateType !== "ONBOARDING"
   ) {
     return "UNSUPPORTED_EVENT_TYPE";
@@ -251,6 +265,16 @@ export async function claimNextAutomationEvent(
     claimReceiptSeconds: number;
   }>,
 ): Promise<RepositoryClaimResult> {
+  const sortedCapabilities = [...input.supportedEventTypes].sort();
+  const requestFingerprint = createHash("sha256")
+    .update(
+      canonicalizeJson({
+        workerId: input.workerId,
+        workflowName: input.workflowName,
+        supportedEventTypes: sortedCapabilities,
+      }),
+    )
+    .digest("hex");
   return database.$transaction(async (tx) => {
     await tx.$executeRaw(Prisma.sql`
       DELETE FROM "AutomationClaimRequest"
@@ -266,12 +290,15 @@ export async function claimNextAutomationEvent(
 
     const inserted = await tx.$queryRaw<Array<{ requestId: string }>>(Prisma.sql`
       INSERT INTO "AutomationClaimRequest" (
-        "requestId", "workerId", "workflowName", "outcome", "expiresAt", "createdAt"
+        "requestId", "workerId", "workflowName", "requestFingerprint",
+        "supportedEventTypes", "outcome", "expiresAt", "createdAt"
       )
       VALUES (
         ${input.requestId}::uuid,
         ${input.workerId},
         ${input.workflowName},
+        ${requestFingerprint},
+        ARRAY[${Prisma.join(sortedCapabilities)}]::TEXT[],
         'PENDING'::"AutomationClaimOutcome",
         CURRENT_TIMESTAMP + make_interval(secs => ${config.claimReceiptSeconds}),
         CURRENT_TIMESTAMP
@@ -284,13 +311,17 @@ export async function claimNextAutomationEvent(
       const existing = await tx.automationClaimRequest.findUniqueOrThrow({
         where: { requestId: input.requestId },
       });
-      if (existing.workerId !== input.workerId || existing.workflowName !== input.workflowName) {
+      if (
+        existing.workerId !== input.workerId ||
+        existing.workflowName !== input.workflowName ||
+        existing.requestFingerprint !== requestFingerprint
+      ) {
         return { kind: "CONFLICT", code: "CLAIM_REQUEST_CONFLICT" };
       }
       return responseForReceipt(tx, input.requestId);
     }
 
-    await recoverExhaustedLeases(tx);
+    await recoverExhaustedLeases(tx, sortedCapabilities);
 
     const candidates = await tx.$queryRaw<LockedEvent[]>(Prisma.sql`
       SELECT
@@ -303,6 +334,7 @@ export async function claimNextAutomationEvent(
           ("status" = 'PROCESSING'::"AutomationEventStatus" AND "leaseExpiresAt" <= CURRENT_TIMESTAMP)
         )
         AND "attemptCount" < "maxAttempts"
+        AND "eventType" IN (${Prisma.join(sortedCapabilities)})
       ORDER BY "availableAt" ASC, "createdAt" ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
@@ -321,7 +353,7 @@ export async function claimNextAutomationEvent(
       if (!event.currentRunId) {
         throw new Error("Processing automation event has no current run");
       }
-      const uncertainWelcome = await markUncertainWelcomeIfSending(tx, event.id);
+      const uncertainWelcome = await markUncertainEmailIfSending(tx, event.id);
       await terminalizeRun(tx, {
         runId: event.currentRunId,
         status: AutomationRunStatus.TIMED_OUT,

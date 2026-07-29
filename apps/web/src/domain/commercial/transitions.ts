@@ -49,6 +49,8 @@ export function canCancelOnboarding(status: OnboardingStatus): boolean {
     status === OnboardingStatus.READY_FOR_ONBOARDING ||
     status === OnboardingStatus.INTERNAL_REVIEW ||
     status === OnboardingStatus.CLIENT_AWAITING_ACTION ||
-    status === OnboardingStatus.CLIENT_REQUIREMENTS_COMPLETE
+    status === OnboardingStatus.CLIENT_REQUIREMENTS_COMPLETE ||
+    status === OnboardingStatus.KICKOFF_PENDING ||
+    status === OnboardingStatus.PROJECT_READY
   );
 }

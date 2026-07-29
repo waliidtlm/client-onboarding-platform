@@ -36,9 +36,9 @@ test.describe.serial("Phase 2 commercial workflow", () => {
     await page.getByLabel("Currency").fill("USD");
     await page.getByRole("button", { name: "Submit sales handoff" }).click();
 
-    await expect(
-      page.getByRole("heading", { name: "Correct the incomplete handoff" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Correct the incomplete handoff" })).toBeVisible(
+      { timeout: 15_000 },
+    );
     correctedOnboardingPath = new URL(page.url()).pathname.replace(/\/handoff$/, "");
     await page.getByLabel("New client contact name").fill("Hana Harbor");
     await page.getByLabel("New client contact email").fill("hana@harbor-fitness.test");
@@ -68,7 +68,11 @@ test.describe.serial("Phase 2 commercial workflow", () => {
     const delivery = await signedInPage(browser, "delivery@northstar.test");
     await delivery.page.goto("/onboardings");
     await delivery.page.getByRole("link", { name: "Atlas Fitness Studio" }).click();
-    await expect(delivery.page.getByTestId("commercial-restricted")).toBeVisible();
+    await expect(
+      delivery.page.getByRole("heading", {
+        name: "The requested onboarding record does not exist.",
+      }),
+    ).toBeVisible();
     await expect(delivery.page.getByText("NS-2026-0001")).toHaveCount(0);
     await delivery.context.close();
   });

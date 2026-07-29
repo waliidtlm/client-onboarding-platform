@@ -15,6 +15,10 @@ export async function claimAutomationEvent(
     "ONBOARDING_ACTIVATED",
     "PROVISIONING_TASK_REQUESTED",
     "WELCOME_EMAIL_REQUESTED",
+    "CLIENT_REQUIREMENTS_COMPLETED",
+    "KICKOFF_INVITATION_REQUESTED",
+    "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED",
+    "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED",
   ],
 ): Promise<Result<AutomationClaimResult>> {
   return executeService(async () => {

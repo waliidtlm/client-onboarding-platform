@@ -10,6 +10,9 @@ import { PaymentControls } from "@/components/commercial/payment-controls";
 import { ProjectManagerAssignment } from "@/components/provisioning/project-manager-assignment";
 import { ProvisioningPanel } from "@/components/provisioning/provisioning-panel";
 import { StaffRequirementsPanel } from "@/components/client-access/staff-requirements-panel";
+import { Phase6Panel } from "@/components/phase6/phase6-panel";
+import { Role } from "@/generated/prisma/client";
+import { listActiveDeliveryUsers, loadPhase6Workspace } from "@/application/phase6/query-service";
 import { can, Permission, requirePermission } from "@/lib/auth/authorization";
 import {
   getOnboardingDetail,
@@ -29,6 +32,20 @@ export default async function OnboardingDetailPage({
   const { id } = await params;
   const { success, error } = await searchParams;
   const staff = await requirePermission(Permission.ONBOARDING_READ, `/onboardings/${id}`);
+  if (staff.role === Role.DELIVERY) {
+    const workspace = await loadPhase6Workspace(id, staff);
+    if (!workspace) notFound();
+    return (
+      <section>
+        <p className="eyebrow">Assigned delivery workspace</p>
+        <h1>{workspace.client?.companyName ?? "Client project"}</h1>
+        <p className="lead">{workspace.servicePackageNameSnapshot ?? "Service package"}</p>
+        {success ? <p className="notice notice-success">{success}</p> : null}
+        {error ? <p className="notice notice-error">{error}</p> : null}
+        <Phase6Panel deliveryUsers={[]} role={staff.role} workspace={workspace} />
+      </section>
+    );
+  }
   const [onboarding, projectManagers, phase5] = await Promise.all([
     getOnboardingDetail(id, staff),
     can(Permission.PROJECT_MANAGER_ASSIGN, staff.role)
@@ -38,6 +55,12 @@ export default async function OnboardingDetailPage({
   ]);
 
   if (!onboarding) notFound();
+  const [phase6, deliveryUsers] = await Promise.all([
+    loadPhase6Workspace(id, staff),
+    staff.role === Role.ADMIN || staff.role === Role.PROJECT_MANAGER
+      ? listActiveDeliveryUsers()
+      : Promise.resolve([]),
+  ]);
 
   const commercial = onboarding.commercial;
   const activationInvoice =
@@ -260,6 +283,10 @@ export default async function OnboardingDetailPage({
           onboardingStatus={onboarding.status}
           onboardingVersion={onboarding.version}
         />
+      ) : null}
+
+      {phase6 ? (
+        <Phase6Panel deliveryUsers={deliveryUsers} role={staff.role} workspace={phase6} />
       ) : null}
 
       <article className="detail-card">

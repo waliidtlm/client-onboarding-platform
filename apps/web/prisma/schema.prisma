@@ -117,6 +117,7 @@ enum CommercialExceptionStatus {
 
 enum AuditActorType {
   STAFF
+  CLIENT
   SYSTEM
 }
 
@@ -176,6 +177,27 @@ enum ProvisioningTaskAttemptStatus {
   TIMED_OUT
 }
 
+enum ClientRequirementStatus {
+  PENDING
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum RequirementReviewDecision {
+  APPROVED
+  REJECTED
+}
+
+enum FileUploadIntentStatus {
+  PENDING
+  FINALIZING
+  FINALIZED
+  REJECTED
+  EXPIRED
+}
+
 model User {
   id                               String                @id @default(uuid()) @db.Uuid
   name                             String                @db.VarChar(200)
@@ -198,6 +220,8 @@ model User {
   manuallyAcceptedProvisioningTasks ProvisioningTask[]    @relation("ProvisioningTaskManuallyAcceptedBy")
   internalReadinessApprovals       Onboarding[]           @relation("InternalReadinessApprovedBy")
   resolvedAutomationEvents         AutomationEvent[]      @relation("AutomationEventResolvedBy")
+  approvedClientRequirements       ClientRequirement[]     @relation("ClientRequirementApprovedBy")
+  reviewedRequirementSubmissions   RequirementSubmission[] @relation("RequirementSubmissionReviewedBy")
 }
 
 model Client {
@@ -256,6 +280,7 @@ model PackageRequirementTemplate {
   createdAt        DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt        DateTime             @updatedAt @db.Timestamptz(3)
   servicePackage   ServicePackage       @relation(fields: [servicePackageId], references: [id], onDelete: Cascade)
+  clientRequirements ClientRequirement[]
 
   @@unique([servicePackageId, sequence])
 }
@@ -289,6 +314,9 @@ model Onboarding {
   manualActivationRevocationReason String?
   activatedAt                 DateTime?                   @db.Timestamptz(3)
   welcomeEmailSentAt          DateTime?                   @db.Timestamptz(3)
+  clientAccessDeliveredAt     DateTime?                   @db.Timestamptz(3)
+  requirementsGenerationKey   String?                     @unique @db.VarChar(255)
+  requirementsGeneratedAt     DateTime?                   @db.Timestamptz(3)
   requirementsCompletedAt     DateTime?                   @db.Timestamptz(3)
   projectReadyAt              DateTime?                   @db.Timestamptz(3)
   completedAt                 DateTime?                   @db.Timestamptz(3)
@@ -313,6 +341,10 @@ model Onboarding {
   automationEvents            AutomationEvent[]
   notificationLogs            NotificationLog[]
   provisioningTasks           ProvisioningTask[]
+  clientRequirements          ClientRequirement[]
+  clientAccessTokens          ClientAccessToken[]
+  fileUploadIntents           FileUploadIntent[]
+  fileAssets                  FileAsset[]
   internalReadinessApprovedById String?                   @db.Uuid
   internalReadinessApprovedAt DateTime?                   @db.Timestamptz(3)
   internalReadinessNote       String?
@@ -431,6 +463,7 @@ model AuditEvent {
   onboardingId  String         @db.Uuid
   actorType      AuditActorType
   actorId        String?        @db.Uuid
+  clientAccessTokenId String?   @db.Uuid
   action         String         @db.VarChar(100)
   entityType     String         @db.VarChar(100)
   entityId       String         @db.VarChar(200)
@@ -441,6 +474,7 @@ model AuditEvent {
   createdAt      DateTime       @default(now()) @db.Timestamptz(3)
   onboarding     Onboarding     @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
   actor          User?          @relation("AuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+  clientAccessToken ClientAccessToken? @relation(fields: [clientAccessTokenId], references: [id], onDelete: Restrict)
 
   @@index([onboardingId, createdAt])
   @@index([correlationId])
@@ -516,6 +550,8 @@ model AutomationClaimRequest {
   requestId         String                 @id @db.Uuid
   workerId          String                 @db.VarChar(100)
   workflowName      String                 @db.VarChar(200)
+  requestFingerprint String                @db.Char(64)
+  supportedEventTypes String[]
   outcome           AutomationClaimOutcome @default(PENDING)
   automationEventId String?                @db.Uuid
   errorCode         String?                @db.VarChar(100)
@@ -548,9 +584,18 @@ model NotificationLog {
   providerReference  String?             @db.VarChar(500)
   sentAt             DateTime?           @db.Timestamptz(3)
   failureReason      String?             @db.VarChar(1000)
+  clientAccessTokenId String?            @unique @db.Uuid
+  clientCompanySnapshot String?          @db.VarChar(200)
+  agencyNameSnapshot String?             @db.VarChar(200)
+  supportContactSnapshot String?         @db.VarChar(320)
+  publicBaseUrlSnapshot String?          @db.VarChar(500)
+  fragmentFormatSnapshot String?         @db.VarChar(100)
+  tokenExpiresAtSnapshot DateTime?       @db.Timestamptz(3)
+  tokenSigningKeyVersionSnapshot Int?
   createdAt          DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime            @updatedAt @db.Timestamptz(3)
   onboarding         Onboarding          @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  clientAccessToken  ClientAccessToken?  @relation(fields: [clientAccessTokenId], references: [id], onDelete: Restrict)
 
   @@index([onboardingId, createdAt])
 }
@@ -619,4 +664,156 @@ model SandboxProvisionedResource {
   externalReference  String           @unique @db.VarChar(500)
   createdAt          DateTime         @default(now()) @db.Timestamptz(3)
   provisioningTask   ProvisioningTask @relation(fields: [provisioningTaskId], references: [id], onDelete: Restrict)
+}
+
+model ClientRequirement {
+  id                       String                  @id @default(uuid()) @db.Uuid
+  onboardingId             String                  @db.Uuid
+  templateId               String                  @db.Uuid
+  name                     String                  @db.VarChar(200)
+  description              String
+  inputType                RequirementInputType
+  isRequired               Boolean
+  sequence                 Int
+  dueOffsetDays            Int
+  dueAt                    DateTime?               @db.Timestamptz(3)
+  status                   ClientRequirementStatus @default(PENDING)
+  currentSubmissionVersion Int                     @default(0)
+  reviewingSubmissionVersion Int?
+  approvedById             String?                 @db.Uuid
+  approvedAt               DateTime?               @db.Timestamptz(3)
+  version                  Int                     @default(1)
+  createdAt                DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                @updatedAt @db.Timestamptz(3)
+  onboarding               Onboarding              @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  template                 PackageRequirementTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  approvedBy               User?                   @relation("ClientRequirementApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
+  submissions              RequirementSubmission[]
+  uploadIntents            FileUploadIntent[]
+  fileAssets               FileAsset[]
+
+  @@unique([onboardingId, templateId])
+  @@unique([onboardingId, sequence])
+  @@index([onboardingId, status, sequence])
+}
+
+model RequirementSubmission {
+  id                       String                    @id @default(uuid()) @db.Uuid
+  requirementId            String                    @db.Uuid
+  submissionVersion        Int
+  textValue                String?
+  urlValue                 String?                   @db.VarChar(2048)
+  submittedViaTokenId      String                    @db.Uuid
+  submissionIdempotencyKey String                    @db.VarChar(255)
+  requestFingerprint       String                    @db.Char(64)
+  submittedAt              DateTime                  @db.Timestamptz(3)
+  reviewedAt               DateTime?                 @db.Timestamptz(3)
+  reviewedById             String?                   @db.Uuid
+  reviewDecision           RequirementReviewDecision?
+  reviewReason             String?
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
+  requirement              ClientRequirement         @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  submittedViaToken        ClientAccessToken         @relation(fields: [submittedViaTokenId], references: [id], onDelete: Restrict)
+  reviewedBy               User?                     @relation("RequirementSubmissionReviewedBy", fields: [reviewedById], references: [id], onDelete: Restrict)
+  files                    FileAsset[]
+
+  @@unique([requirementId, submissionVersion])
+  @@unique([requirementId, submissionIdempotencyKey])
+  @@index([requirementId, createdAt])
+}
+
+model ClientAccessToken {
+  id                 String              @id @default(uuid()) @db.Uuid
+  onboardingId       String              @db.Uuid
+  tokenHash          String              @unique @db.Char(64)
+  tokenNonce         String              @db.VarChar(43)
+  tokenVersion       Int
+  signingKeyVersion  Int
+  issueSequence      Int
+  issuanceKey        String              @unique @db.VarChar(255)
+  requestFingerprint String              @db.Char(64)
+  expiresAt          DateTime            @db.Timestamptz(3)
+  revokedAt          DateTime?           @db.Timestamptz(3)
+  revocationReason   String?
+  replacedById       String?             @unique @db.Uuid
+  lastUsedAt         DateTime?           @db.Timestamptz(3)
+  createdAt          DateTime            @default(now()) @db.Timestamptz(3)
+  onboarding         Onboarding          @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  replacedBy         ClientAccessToken?  @relation("ClientAccessReplacement", fields: [replacedById], references: [id], onDelete: Restrict)
+  replaces           ClientAccessToken?  @relation("ClientAccessReplacement")
+  notification       NotificationLog?
+  submissions        RequirementSubmission[]
+  uploadIntents      FileUploadIntent[]
+  auditEvents        AuditEvent[]
+
+  @@unique([onboardingId, issueSequence])
+  @@index([onboardingId, expiresAt])
+}
+
+model FileUploadIntent {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  clientAccessTokenId String                 @db.Uuid
+  onboardingId        String                 @db.Uuid
+  requirementId       String                 @db.Uuid
+  expectedInputType   RequirementInputType
+  uploadStorageKey    String                 @unique @db.VarChar(500)
+  finalStorageKey     String                 @unique @db.VarChar(500)
+  originalFilename    String                 @db.VarChar(255)
+  declaredMimeType    String                 @db.VarChar(200)
+  declaredSizeBytes   BigInt
+  declaredChecksum    String                 @db.Char(64)
+  status              FileUploadIntentStatus @default(PENDING)
+  failureCode         String?                @db.VarChar(100)
+  idempotencyKey      String                 @db.VarChar(255)
+  requestFingerprint  String                 @db.Char(64)
+  expiresAt           DateTime               @db.Timestamptz(3)
+  finalizedAt         DateTime?              @db.Timestamptz(3)
+  version             Int                    @default(1)
+  createdAt           DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime               @updatedAt @db.Timestamptz(3)
+  clientAccessToken   ClientAccessToken      @relation(fields: [clientAccessTokenId], references: [id], onDelete: Restrict)
+  onboarding          Onboarding             @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  requirement         ClientRequirement      @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  fileAsset           FileAsset?
+
+  @@unique([clientAccessTokenId, idempotencyKey])
+  @@index([status, expiresAt])
+  @@index([onboardingId, requirementId])
+}
+
+model FileAsset {
+  id                      String                 @id @default(uuid()) @db.Uuid
+  onboardingId            String                 @db.Uuid
+  requirementId           String                 @db.Uuid
+  uploadIntentId          String                 @unique @db.Uuid
+  requirementSubmissionId String?                @db.Uuid
+  storageKey              String                 @unique @db.VarChar(500)
+  originalFilename        String                 @db.VarChar(255)
+  mimeType                String                 @db.VarChar(200)
+  sizeBytes               BigInt
+  checksum                String                 @db.Char(64)
+  displayOrder            Int?
+  uploadedAt              DateTime               @db.Timestamptz(3)
+  finalizedAt             DateTime               @db.Timestamptz(3)
+  createdAt               DateTime               @default(now()) @db.Timestamptz(3)
+  onboarding              Onboarding             @relation(fields: [onboardingId], references: [id], onDelete: Restrict)
+  requirement             ClientRequirement      @relation(fields: [requirementId], references: [id], onDelete: Restrict)
+  uploadIntent            FileUploadIntent       @relation(fields: [uploadIntentId], references: [id], onDelete: Restrict)
+  requirementSubmission   RequirementSubmission? @relation(fields: [requirementSubmissionId], references: [id], onDelete: Restrict)
+
+  @@index([onboardingId, requirementId])
+  @@index([requirementSubmissionId, displayOrder])
+}
+
+model PublicRateLimitBucket {
+  id               String   @id @default(uuid()) @db.Uuid
+  scope            String   @db.VarChar(100)
+  subjectHash      String   @db.Char(64)
+  windowStartedAt  DateTime @db.Timestamptz(3)
+  count            Int
+  expiresAt        DateTime @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([scope, subjectHash, windowStartedAt])
+  @@index([expiresAt])
 }

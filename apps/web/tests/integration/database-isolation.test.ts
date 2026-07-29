@@ -41,6 +41,7 @@ async function canConnect(connectionString: string): Promise<boolean> {
 }
 
 describe("PostgreSQL role isolation", () => {
+  const isolatedTestDatabase = process.env.TEST_DB_NAME ?? "onboarding_test";
   const appRuntime = requireUrl("APP_RUNTIME_DATABASE_URL");
   const testRuntime = requireUrl("TEST_DATABASE_URL");
   const migration = requireUrl("MIGRATION_DATABASE_URL");
@@ -54,7 +55,7 @@ describe("PostgreSQL role isolation", () => {
     await expect(canConnect(n8n)).resolves.toBe(true);
   });
 
-  it.each(["onboarding_test", "onboarding_shadow", "n8n_internal"])(
+  it.each([isolatedTestDatabase, "onboarding_shadow", "n8n_internal"])(
     "blocks the runtime application user from %s",
     async (database) => {
       await expect(canConnect(targetDatabase(appRuntime, database))).resolves.toBe(false);
@@ -72,7 +73,7 @@ describe("PostgreSQL role isolation", () => {
     await expect(canConnect(targetDatabase(migration, "n8n_internal"))).resolves.toBe(false);
   });
 
-  it.each(["onboarding_app", "onboarding_test", "onboarding_shadow"])(
+  it.each(["onboarding_app", isolatedTestDatabase, "onboarding_shadow"])(
     "blocks the n8n role from %s",
     async (database) => {
       await expect(canConnect(targetDatabase(n8n, database))).resolves.toBe(false);

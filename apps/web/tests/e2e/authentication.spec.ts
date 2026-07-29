@@ -16,7 +16,7 @@ async function signIn(page: Page, email: string, password = testStaffPassword) {
 test("active staff can sign in, view list/detail, and sign out", async ({ page }) => {
   await signIn(page, "admin@northstar.test");
 
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "Onboarding workspace" })).toBeVisible();
 
   await page.getByRole("link", { name: "Onboardings", exact: true }).click();

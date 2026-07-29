@@ -50,7 +50,13 @@ export async function executeService<T>(work: () => Promise<T>): Promise<Result<
 
     const databaseError = error as {
       code?: string;
-      meta?: { target?: string[] | string; constraint?: string };
+      meta?: {
+        target?: string[] | string;
+        constraint?: string;
+        driverAdapterError?: {
+          cause?: { originalCode?: string; code?: string };
+        };
+      };
     };
     if (databaseError.code === "P2002") {
       const target = `${JSON.stringify(databaseError.meta ?? {})} ${String(error)}`;
@@ -73,7 +79,10 @@ export async function executeService<T>(work: () => Promise<T>): Promise<Result<
         );
       }
     }
-    if (databaseError.code === "P2034") {
+    const originalDatabaseCode =
+      databaseError.meta?.driverAdapterError?.cause?.originalCode ??
+      databaseError.meta?.driverAdapterError?.cause?.code;
+    if (databaseError.code === "P2034" || originalDatabaseCode === "40001") {
       return failure(
         "VERSION_CONFLICT",
         "Another commercial update completed first. Refresh and try again.",

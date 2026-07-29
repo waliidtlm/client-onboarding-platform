@@ -1,5 +1,7 @@
+import type { PrismaClient } from "@/generated/prisma/client";
 import { can, Permission, type CurrentStaff } from "@/lib/auth/authorization";
 import { prisma } from "@/lib/database";
+import { validateHttpsUrl } from "@/domain/requirements/submission-validation";
 import { formatMoney, presentStoredStatus, type StoredStatus } from "@/lib/onboardings/presenter";
 import { calculateProvisioningReadiness } from "@/domain/provisioning/readiness";
 
@@ -446,6 +448,193 @@ export async function listActiveProjectManagers() {
     orderBy: { name: "asc" },
     select: { id: true, name: true, email: true },
   });
+}
+
+export async function getPhase5Detail(
+  id: string,
+  staff: CurrentStaff,
+  database: PrismaClient = prisma,
+) {
+  if (!can(Permission.CLIENT_REQUIREMENTS_READ, staff.role)) return null;
+  const onboarding = await database.onboarding.findUnique({
+    where: { id },
+    select: {
+      projectManagerId: true,
+      projectManager: { select: { isActive: true } },
+      requirementsGeneratedAt: true,
+      clientAccessDeliveredAt: true,
+      requirementsCompletedAt: true,
+      clientRequirements: {
+        orderBy: { sequence: "asc" },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          inputType: true,
+          isRequired: true,
+          sequence: true,
+          dueAt: true,
+          status: true,
+          version: true,
+          currentSubmissionVersion: true,
+          reviewingSubmissionVersion: true,
+        },
+      },
+      clientAccessTokens: {
+        orderBy: { issueSequence: "desc" },
+        select: {
+          id: true,
+          issueSequence: true,
+          expiresAt: true,
+          revokedAt: true,
+          revocationReason: true,
+          createdAt: true,
+          notification: {
+            select: {
+              id: true,
+              status: true,
+              recipient: true,
+              attemptCount: true,
+              providerReference: true,
+              sentAt: true,
+              failureReason: true,
+            },
+          },
+        },
+      },
+      auditEvents: {
+        where: {
+          action: {
+            in: [
+              "CLIENT_REQUIREMENTS_GENERATED",
+              "CLIENT_ACCESS_ISSUED",
+              "CLIENT_ACCESS_REISSUED",
+              "CLIENT_ACCESS_REVOKED",
+              "CLIENT_ACCESS_EMAIL_SENT",
+              "CLIENT_ACCESS_EMAIL_DELIVERY_CONFIRMED",
+              "CLIENT_ACCESS_EMAIL_RESEND_AUTHORIZED",
+              "CLIENT_REQUIREMENT_SUBMITTED",
+              "CLIENT_REQUIREMENT_RESUBMITTED",
+              "CLIENT_REQUIREMENT_REVIEW_STARTED",
+              "CLIENT_REQUIREMENT_APPROVED",
+              "CLIENT_REQUIREMENT_REJECTED",
+              "ALL_MANDATORY_CLIENT_REQUIREMENTS_COMPLETED",
+            ],
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: {
+          id: true,
+          actorType: true,
+          action: true,
+          entityType: true,
+          createdAt: true,
+          actor: { select: { name: true } },
+        },
+      },
+    },
+  });
+  if (!onboarding) return null;
+  if (
+    staff.role === "PROJECT_MANAGER" &&
+    (onboarding.projectManagerId !== staff.id || !onboarding.projectManager?.isActive)
+  ) {
+    return null;
+  }
+  const mayReadContent = can(Permission.CLIENT_REQUIREMENTS_CONTENT_READ, staff.role);
+  const contentSubmissions = mayReadContent
+    ? await database.requirementSubmission.findMany({
+        where: {
+          requirement: {
+            onboarding: {
+              id,
+              ...(staff.role === "PROJECT_MANAGER"
+                ? {
+                    projectManagerId: staff.id,
+                    projectManager: { isActive: true },
+                  }
+                : {}),
+            },
+          },
+        },
+        orderBy: [{ requirementId: "asc" }, { submissionVersion: "desc" }],
+        include: {
+          files: {
+            orderBy: { displayOrder: "asc" },
+            select: {
+              id: true,
+              originalFilename: true,
+              mimeType: true,
+              sizeBytes: true,
+            },
+          },
+        },
+      })
+    : [];
+  type ContentSubmission = (typeof contentSubmissions)[number];
+  const submissionsByRequirement = new Map<string, ContentSubmission[]>();
+  for (const submission of contentSubmissions) {
+    const grouped = submissionsByRequirement.get(submission.requirementId) ?? [];
+    grouped.push(submission);
+    submissionsByRequirement.set(submission.requirementId, grouped);
+  }
+  return {
+    requirementsGeneratedAt: onboarding.requirementsGeneratedAt?.toISOString() ?? null,
+    clientAccessDeliveredAt: onboarding.clientAccessDeliveredAt?.toISOString() ?? null,
+    requirementsCompletedAt: onboarding.requirementsCompletedAt?.toISOString() ?? null,
+    contentVisible: mayReadContent,
+    requirements: onboarding.clientRequirements.map((requirement) => {
+      const submissions = submissionsByRequirement.get(requirement.id) ?? [];
+      const mappedSubmissions = submissions.map((submission) => ({
+        id: submission.id,
+        submissionVersion: submission.submissionVersion,
+        submittedAt: submission.submittedAt.toISOString(),
+        reviewedAt: submission.reviewedAt?.toISOString() ?? null,
+        reviewDecision: submission.reviewDecision,
+        reviewReason: submission.reviewReason,
+        textValue: submission.textValue,
+        urlValue: submission.urlValue ? validateHttpsUrl(submission.urlValue) : null,
+        fileCount: submission.files.length,
+        files: submission.files.map((file) => ({
+          ...file,
+          sizeBytes: file.sizeBytes.toString(),
+        })),
+      }));
+      return {
+        id: requirement.id,
+        name: requirement.name,
+        description: requirement.description,
+        inputType: requirement.inputType,
+        isRequired: requirement.isRequired,
+        sequence: requirement.sequence,
+        dueAt: requirement.dueAt?.toISOString() ?? null,
+        status: requirement.status,
+        version: requirement.version,
+        currentSubmissionVersion: requirement.currentSubmissionVersion,
+        reviewingSubmissionVersion: requirement.reviewingSubmissionVersion,
+        latestSubmission: mappedSubmissions[0] ?? null,
+        previousSubmissions: mappedSubmissions.slice(1),
+      };
+    }),
+    tokens: onboarding.clientAccessTokens.map((token) => ({
+      ...token,
+      expiresAt: token.expiresAt.toISOString(),
+      revokedAt: token.revokedAt?.toISOString() ?? null,
+      createdAt: token.createdAt.toISOString(),
+      notification: token.notification
+        ? {
+            ...token.notification,
+            sentAt: token.notification.sentAt?.toISOString() ?? null,
+          }
+        : null,
+    })),
+    auditEvents: onboarding.auditEvents.map((event) => ({
+      ...event,
+      actorName: event.actor?.name ?? "System / client",
+      createdAt: event.createdAt.toISOString(),
+    })),
+  };
 }
 
 export async function getSalesHandoffFormData(onboardingId?: string) {

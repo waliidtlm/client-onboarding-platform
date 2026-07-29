@@ -9,8 +9,13 @@ import { ContractControls } from "@/components/commercial/contract-controls";
 import { PaymentControls } from "@/components/commercial/payment-controls";
 import { ProjectManagerAssignment } from "@/components/provisioning/project-manager-assignment";
 import { ProvisioningPanel } from "@/components/provisioning/provisioning-panel";
+import { StaffRequirementsPanel } from "@/components/client-access/staff-requirements-panel";
 import { can, Permission, requirePermission } from "@/lib/auth/authorization";
-import { getOnboardingDetail, listActiveProjectManagers } from "@/lib/onboardings/queries";
+import {
+  getOnboardingDetail,
+  getPhase5Detail,
+  listActiveProjectManagers,
+} from "@/lib/onboardings/queries";
 
 type OnboardingDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -24,11 +29,12 @@ export default async function OnboardingDetailPage({
   const { id } = await params;
   const { success, error } = await searchParams;
   const staff = await requirePermission(Permission.ONBOARDING_READ, `/onboardings/${id}`);
-  const [onboarding, projectManagers] = await Promise.all([
+  const [onboarding, projectManagers, phase5] = await Promise.all([
     getOnboardingDetail(id, staff),
     can(Permission.PROJECT_MANAGER_ASSIGN, staff.role)
       ? listActiveProjectManagers()
       : Promise.resolve([]),
+    getPhase5Detail(id, staff),
   ]);
 
   if (!onboarding) notFound();
@@ -242,6 +248,18 @@ export default async function OnboardingDetailPage({
           <h2>Provisioning</h2>
           <p>Your role or assignment does not permit access to provisioning details.</p>
         </article>
+      ) : null}
+
+      {phase5 ? (
+        <StaffRequirementsPanel
+          canManage={can(Permission.CLIENT_ACCESS_MANAGE, staff.role)}
+          canResolveEmail={can(Permission.CLIENT_ACCESS_EMAIL_RESOLVE, staff.role)}
+          canReview={can(Permission.CLIENT_REQUIREMENTS_REVIEW, staff.role)}
+          detail={phase5}
+          onboardingId={id}
+          onboardingStatus={onboarding.status}
+          onboardingVersion={onboarding.version}
+        />
       ) : null}
 
       <article className="detail-card">

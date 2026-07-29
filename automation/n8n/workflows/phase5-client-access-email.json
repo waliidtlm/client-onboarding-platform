@@ -1,0 +1,57 @@
+{
+  "name": "Phase 5 Client Access Email",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "749a2153-67d2-47b3-bc57-6ad0679317c5",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, -80]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 1 }]
+        }
+      },
+      "id": "30f8c831-f19e-4cc8-963b-39aed25129ef",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_PHASE5_SERVICE_TOKEN,secret=$env.AUTOMATION_PHASE5_HMAC_SECRET,workerId=$env.AUTOMATION_PHASE5_WORKER_ID;if(!base||!token||!secret||!workerId)throw new Error('AUTOMATION_CONFIGURATION_INVALID');async function send(path,body){const text=JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`POST\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;return await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method:'POST',headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',chunk=>{if(value.length<65536)value+=chunk;});res.on('end',()=>{let parsed=null;try{parsed=value?JSON.parse(value):null;}catch{}resolve({status:res.statusCode||0,body:parsed});});});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});}const claim=await send('/api/internal/automation/claim',{requestId:crypto.randomUUID(),workerId,workflowName:'Phase 5 Client Access Email',supportedEventTypes:['CLIENT_ACCESS_EMAIL_REQUESTED']});if(claim.status===204)return[{json:{outcome:'EMPTY'}}];if(claim.status<200||claim.status>=300||claim.body?.kind!=='CLAIMED')throw new Error('AUTOMATION_CLAIM_FAILED');const executionId=String($execution.id),delivery=await send('/api/internal/automation/client-access-email/deliver',{eventId:claim.body.event.eventId,runId:claim.body.run.runId,idempotencyKey:claim.body.run.idempotencyKey,workerId,n8nExecutionId:executionId});if(delivery.status<200||delivery.status>=300)throw new Error('CLIENT_ACCESS_DELIVERY_FAILED');return[{json:{outcome:delivery.body?.status||'COMPLETED',eventId:claim.body.event.eventId,runId:claim.body.run.runId}}];"
+      },
+      "id": "936ccde5-c1fb-4e55-ae2a-6cc0d16bb542",
+      "name": "Claim and Deliver",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Claim and Deliver", "type": "main", "index": 0 }]]
+    },
+    "Every Minute": {
+      "main": [[{ "node": "Claim and Deliver", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-07-28T00:00:00.000Z",
+  "versionId": "8254fbab-4d22-4ad2-8cec-b8ac1f16113e",
+  "active": false,
+  "id": "phase5-client-access-email"
+}

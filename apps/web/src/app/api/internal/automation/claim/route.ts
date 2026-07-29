@@ -27,7 +27,11 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
-  const result = await claimAutomationEvent(input.data);
+  const result = await claimAutomationEvent(
+    input.data,
+    undefined,
+    authenticated.authorizedEventTypes,
+  );
   logger.info({
     requestId: input.data.requestId,
     action: "AUTOMATION_CLAIM",

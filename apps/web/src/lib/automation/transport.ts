@@ -4,10 +4,28 @@ import { readRawRequestBody, RequestBodyTooLargeError } from "@/lib/automation/r
 import { verifyAutomationAuthentication } from "@/lib/automation/service-auth";
 
 export type AuthenticatedAutomationRequest =
-  Readonly<{ ok: true; rawBody: Uint8Array }> | Readonly<{ ok: false; response: Response }>;
+  | Readonly<{
+      ok: true;
+      rawBody: Uint8Array;
+      serviceIdentity: AutomationServiceIdentity;
+      authorizedEventTypes: readonly string[];
+    }>
+  | Readonly<{ ok: false; response: Response }>;
+
+export type AutomationServiceIdentity = "PHASE4_PROVISIONING" | "PHASE5_ACCESS_EMAIL";
+
+const identityCapabilities = {
+  PHASE4_PROVISIONING: [
+    "ONBOARDING_ACTIVATED",
+    "PROVISIONING_TASK_REQUESTED",
+    "WELCOME_EMAIL_REQUESTED",
+  ],
+  PHASE5_ACCESS_EMAIL: ["CLIENT_ACCESS_EMAIL_REQUESTED"],
+} as const satisfies Record<AutomationServiceIdentity, readonly string[]>;
 
 export async function authenticateAutomationRequest(
   request: Request,
+  allowedIdentities?: readonly AutomationServiceIdentity[],
 ): Promise<AuthenticatedAutomationRequest> {
   let rawBody: Uint8Array;
   try {
@@ -26,18 +44,33 @@ export async function authenticateAutomationRequest(
   }
   const environment = getServerEnvironment();
   const url = new URL(request.url);
-  const authenticated = verifyAutomationAuthentication({
-    authorization: request.headers.get("authorization"),
-    signature: request.headers.get("x-automation-signature"),
-    timestamp: request.headers.get("x-automation-timestamp"),
-    method: request.method,
-    requestTarget: `${url.pathname}${url.search}`,
-    rawBody,
-    serviceToken: environment.AUTOMATION_SERVICE_TOKEN,
-    hmacSecret: environment.AUTOMATION_HMAC_SECRET,
-    maxAgeSeconds: environment.AUTOMATION_SIGNATURE_MAX_AGE_SECONDS,
-  });
-  if (!authenticated) {
+  const credentials: ReadonlyArray<readonly [AutomationServiceIdentity, string, string]> = [
+    [
+      "PHASE4_PROVISIONING",
+      environment.AUTOMATION_SERVICE_TOKEN,
+      environment.AUTOMATION_HMAC_SECRET,
+    ],
+    [
+      "PHASE5_ACCESS_EMAIL",
+      environment.AUTOMATION_PHASE5_SERVICE_TOKEN,
+      environment.AUTOMATION_PHASE5_HMAC_SECRET,
+    ],
+  ];
+  const serviceIdentity = credentials.find(([identity, serviceToken, hmacSecret]) => {
+    if (allowedIdentities && !allowedIdentities.includes(identity)) return false;
+    return verifyAutomationAuthentication({
+      authorization: request.headers.get("authorization"),
+      signature: request.headers.get("x-automation-signature"),
+      timestamp: request.headers.get("x-automation-timestamp"),
+      method: request.method,
+      requestTarget: `${url.pathname}${url.search}`,
+      rawBody,
+      serviceToken,
+      hmacSecret,
+      maxAgeSeconds: environment.AUTOMATION_SIGNATURE_MAX_AGE_SECONDS,
+    });
+  })?.[0];
+  if (!serviceIdentity) {
     return {
       ok: false,
       response: Response.json(
@@ -46,7 +79,12 @@ export async function authenticateAutomationRequest(
       ),
     };
   }
-  return { ok: true, rawBody };
+  return {
+    ok: true,
+    rawBody,
+    serviceIdentity,
+    authorizedEventTypes: identityCapabilities[serviceIdentity],
+  };
 }
 
 function errorStatus(error: DomainError): number {

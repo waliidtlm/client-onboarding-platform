@@ -83,6 +83,8 @@ export const recordWelcomeDeliverySchema = beginWelcomeDeliverySchema.extend({
   retryable: z.boolean(),
 });
 
+export const deliverClientAccessEmailSchema = machineRunSchema;
+
 export const resolveWelcomeUncertaintySchema = z.object({
   actorId: z.uuid(),
   notificationId: z.uuid(),

@@ -10,7 +10,7 @@ export async function handlePhase4MachinePost<T>(
   schema: z.ZodType<T>,
   work: (input: T) => Promise<Parameters<typeof automationResultResponse>[0]>,
 ): Promise<Response> {
-  const authenticated = await authenticateAutomationRequest(request);
+  const authenticated = await authenticateAutomationRequest(request, ["PHASE4_PROVISIONING"]);
   if (!authenticated.ok) return authenticated.response;
   let parsed: unknown;
   try {

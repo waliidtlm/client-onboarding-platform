@@ -22,14 +22,18 @@ function quotedDatabaseRole(connectionString: string, label: string): string {
 }
 
 export async function prepareIntegrationDatabase(): Promise<void> {
+  const testDatabaseName = process.env.TEST_DB_NAME ?? "onboarding_test";
+  if (!/^onboarding_test(?:_[a-z0-9_]+)?$/.test(testDatabaseName)) {
+    throw new Error("TEST_DB_NAME is outside the isolated test namespace");
+  }
   const testRuntimeUrl = requireDatabase(
     process.env.TEST_DATABASE_URL,
-    "onboarding_test",
+    testDatabaseName,
     "TEST_DATABASE_URL",
   );
   const testMigrationUrl = requireDatabase(
     process.env.TEST_MIGRATION_DATABASE_URL,
-    "onboarding_test",
+    testDatabaseName,
     "TEST_MIGRATION_DATABASE_URL",
   );
   requireDatabase(process.env.SHADOW_DATABASE_URL, "onboarding_shadow", "SHADOW_DATABASE_URL");

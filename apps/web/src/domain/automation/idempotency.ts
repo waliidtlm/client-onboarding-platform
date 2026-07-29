@@ -4,6 +4,8 @@ export const SUPPORTED_AUTOMATION_EVENT_TYPES = [
   "ONBOARDING_ACTIVATED",
   "PROVISIONING_TASK_REQUESTED",
   "WELCOME_EMAIL_REQUESTED",
+  "CLIENT_ACCESS_EMAIL_REQUESTED",
+  "CLIENT_REQUIREMENTS_COMPLETED",
 ] as const;
 
 export type SupportedAutomationEventType = (typeof SUPPORTED_AUTOMATION_EVENT_TYPES)[number];
@@ -50,6 +52,16 @@ export function automationEventPayloadIsValid(
       typeof record.notificationId === "string" &&
       /^[0-9a-f-]{36}$/i.test(record.notificationId)
     );
+  }
+  if (eventType === "CLIENT_ACCESS_EMAIL_REQUESTED") {
+    return (
+      Object.keys(record).length === 1 &&
+      typeof record.notificationId === "string" &&
+      /^[0-9a-f-]{36}$/i.test(record.notificationId)
+    );
+  }
+  if (eventType === "CLIENT_REQUIREMENTS_COMPLETED") {
+    return Object.keys(record).length === 0;
   }
   return false;
 }

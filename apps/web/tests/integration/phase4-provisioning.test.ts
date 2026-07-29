@@ -77,6 +77,11 @@ async function claimSpecific(
         requestId: randomUUID(),
         workerId,
         workflowName: "Phase 4 Integration Consumer",
+        supportedEventTypes: [
+          "ONBOARDING_ACTIVATED",
+          "PROVISIONING_TASK_REQUESTED",
+          "WELCOME_EMAIL_REQUESTED",
+        ],
       },
       runtime,
     ),

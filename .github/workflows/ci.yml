@@ -138,7 +138,7 @@ jobs:
         run: pnpm prisma migrate status --config prisma.test.config.ts
 
       - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm --filter @client-onboarding/web exec playwright install --with-deps chromium
 
       - name: Run Playwright application tests
         run: pnpm test:e2e

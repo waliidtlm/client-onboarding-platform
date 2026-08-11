@@ -79,7 +79,7 @@ export default defineConfig({
       NEXTAUTH_URL: baseURL,
       DEPLOYMENT_PROFILE: "local",
     },
-    url: `${baseURL}/api/ready`,
+    url: `${baseURL}/api/health`,
     reuseExistingServer: false,
     timeout: 120_000,
   },

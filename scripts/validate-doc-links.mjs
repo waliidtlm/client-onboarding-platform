@@ -1,20 +1,28 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
+
+function collectMarkdownFiles(relativeDirectory) {
+  const absoluteDirectory = path.join(repositoryRoot, relativeDirectory);
+  if (!existsSync(absoluteDirectory)) return [];
+  return readdirSync(absoluteDirectory, { withFileTypes: true }).flatMap((entry) => {
+    const relativePath = path.join(relativeDirectory, entry.name);
+    if (entry.isDirectory()) return collectMarkdownFiles(relativePath);
+    return entry.isFile() && entry.name.endsWith(".md") && !entry.name.endsWith(".local.md")
+      ? [relativePath]
+      : [];
+  });
+}
+
 const markdownFiles = [
   "README.md",
-  "automation/n8n/README.md",
-  "docs/client_onboarding_platform_blueprint.md",
-  "docs/security-hardening.md",
-  "docs/security/dependency-risk-exceptions.md",
-  "docs/demo-script.md",
-  "docs/deployment.md",
-  "docs/known-limitations.md",
-].filter((file) => existsSync(path.join(repositoryRoot, file)));
+  ...collectMarkdownFiles("docs"),
+  ...collectMarkdownFiles(path.join("automation", "n8n")),
+].sort();
 
 const failures = [];
-const linkPattern = /(?<!!)\[[^\]]*]\(([^)]+)\)/g;
+const linkPattern = /!?\[[^\]]*]\(([^)]+)\)/g;
 
 for (const relativeFile of markdownFiles) {
   const absoluteFile = path.join(repositoryRoot, relativeFile);

@@ -127,6 +127,7 @@ test("assigned Delivery sees only the handoff workspace and can acknowledge", as
   ).toBeVisible();
   await expect(page.getByText("Commercial Gate", { exact: true })).toHaveCount(0);
   await expect(page.getByText(`PHASE6-E2E-`, { exact: false })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Audit timeline" })).toBeVisible();
 
   await page.getByRole("button", { name: "Acknowledge handoff" }).click();
   await expect(page).toHaveURL(new RegExp(`/onboardings/${onboardingId}\\?success=`));
@@ -134,4 +135,5 @@ test("assigned Delivery sees only the handoff workspace and can acknowledge", as
     page.getByText("Delivery handoff acknowledged and onboarding completed."),
   ).toBeVisible();
   await expect(page.getByText("ACKNOWLEDGED", { exact: true })).toBeVisible();
+  await expect(page.getByText("ONBOARDING COMPLETED", { exact: true })).toBeVisible();
 });

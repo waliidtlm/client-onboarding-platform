@@ -1,10 +1,18 @@
 # Client Onboarding Platform
 
-Production-minded internal client onboarding platform with durable n8n orchestration.
+Agencies often coordinate sales handoff, payment, provisioning, client inputs, kickoff, and
+Delivery ownership across spreadsheets and chat. That makes blockers invisible and retries hard
+to audit.
 
-Phase 5 keeps the application as the business authority and adds immutable client requirements,
-reconstructable secure access, scoped client sessions, private direct uploads, staff review, and
-durable completion events.
+This platform targets small service agencies that need one controlled onboarding workflow. It
+takes a client from commercial correction through activation, provisioning, secure client
+requirements, kickoff, Delivery acknowledgment, and a terminal `COMPLETED` record.
+
+Visual tour: [architecture and data model](docs/architecture.md), [isolated demo
+script](docs/demo-script.md), and the final screenshots in `docs/screenshots/`.
+
+> Local-only demonstration components: the sandbox provisioning adapter, Mailpit, MinIO, local
+> n8n, and Docker Compose. They are not production integrations.
 
 ## Phase 1 behavior
 
@@ -14,7 +22,7 @@ durable completion events.
 - All six approved roles can read onboarding overview and package configuration.
 - Delivery cannot read commercial records; those rows are not queried for Delivery requests.
 - Credentials use encrypted JWT sessions. Auth.js database session tables are intentionally absent.
-- Login throttling, password recovery, MFA, and production SSO remain production improvements.
+- Password recovery, MFA, and production SSO remain production improvements.
 
 ## Phase 2 behavior
 
@@ -105,7 +113,24 @@ durable completion events.
 - Assigned active Delivery users see only approved current client content and the frozen handoff.
   Acknowledgment completes the onboarding, calculates the snapshotted SLA, and revokes client
   access.
-  pending for the unimplemented Phase 6.
+
+## Phase 7 behavior
+
+- The application owns four bounded policies: mandatory client requirements, provisioning manual
+  review, unscheduled kickoff, and unacknowledged Delivery handoff.
+- Client requirements receive one due-soon notice and at most three overdue notices. The PM is
+  escalated after 72 hours and Operations is the final recipient after 168 hours.
+- Provisioning review, kickoff, and handoff policies are staff-only and finish with an Admin
+  escalation. Deterministic policy-window keys make 15-minute polling replay-safe.
+- Staff login failures use PostgreSQL-backed IP and normalized-account windows. Stored subjects
+  are HMAC hashes, responses are generic, successful authentication clears the account window,
+  and limiter failures deny login.
+- The environment-aware CSP supports local Next.js and MinIO while requiring HTTPS public origins
+  in production. It is intentionally not a nonce-based policy.
+- The Admin recovery page defaults to failed/dead-letter events, shows safe summaries, and exposes
+  retry only for event types supported by a dedicated recovery path.
+- Onboarding detail includes a safe unified audit timeline. Delivery receives only its restricted
+  action subset.
 
 ## Architecture boundary
 
@@ -143,6 +168,9 @@ and replace every development-only value before using this setup outside a local
 The [security hardening checkpoint](docs/security-hardening.md) documents dependency remediation,
 CI policy, local credential separation, and requirements that must be completed before internet
 deployment.
+
+See the [deployment guide](docs/deployment.md) and [known limitations](docs/known-limitations.md)
+before adapting the portfolio stack.
 
 Add the Phase 1 variables from `.env.example` to an older Phase 0 `.env`. In particular, configure:
 
@@ -263,28 +291,29 @@ Build-time validation and runtime readiness are intentionally separate:
 
 ## Root commands
 
-| Command                     | Purpose                                                      |
-| --------------------------- | ------------------------------------------------------------ |
-| `pnpm.cmd dev`              | Start the Next.js development server.                        |
-| `pnpm.cmd build`            | Create the production Next.js build.                         |
-| `pnpm.cmd format`           | Apply Prettier formatting.                                   |
-| `pnpm.cmd format:check`     | Check formatting without changing files.                     |
-| `pnpm.cmd lint`             | Run ESLint with zero warnings allowed.                       |
-| `pnpm.cmd n8n:validate`     | Validate the committed inactive n8n workflow exports.        |
-| `pnpm.cmd typecheck`        | Generate Next.js route types and run strict TypeScript.      |
-| `pnpm.cmd test`             | Run Vitest unit and Route Handler tests.                     |
-| `pnpm.cmd test:integration` | Run real PostgreSQL integration and role-isolation tests.    |
-| `pnpm.cmd test:e2e`         | Run Playwright authentication and protected-page tests.      |
-| `pnpm.cmd secret:scan`      | Scan repository content with Secretlint.                     |
-| `pnpm.cmd smoke:phase6`     | Run the local Phase 6 n8n + Mailpit end-to-end smoke.        |
-| `pnpm.cmd verify`           | Run deterministic checks; DB and browser tests are separate. |
-| `pnpm.cmd docker:config`    | Validate rendered Compose configuration using `.env`.        |
-| `pnpm.cmd docker:up`        | Build and start the full stack using `.env`.                 |
-| `pnpm.cmd docker:down`      | Stop containers while preserving named volumes.              |
-| `pnpm.cmd db:bootstrap`     | Idempotently prepare Phase 1 local database roles.           |
-| `pnpm.cmd db:deploy`        | Apply committed migrations with migration credentials.       |
-| `pnpm.cmd db:seed`          | Upsert the fictional Phase 1 demonstration records.          |
-| `pnpm.cmd db:validate`      | Validate the Prisma schema.                                  |
+| Command                     | Purpose                                                       |
+| --------------------------- | ------------------------------------------------------------- |
+| `pnpm.cmd dev`              | Start the Next.js development server.                         |
+| `pnpm.cmd build`            | Create the production Next.js build.                          |
+| `pnpm.cmd format`           | Apply Prettier formatting.                                    |
+| `pnpm.cmd format:check`     | Check formatting without changing files.                      |
+| `pnpm.cmd lint`             | Run ESLint with zero warnings allowed.                        |
+| `pnpm.cmd n8n:validate`     | Validate the committed inactive n8n workflow exports.         |
+| `pnpm.cmd typecheck`        | Generate Next.js route types and run strict TypeScript.       |
+| `pnpm.cmd test`             | Run Vitest unit and Route Handler tests.                      |
+| `pnpm.cmd test:integration` | Run real PostgreSQL integration and role-isolation tests.     |
+| `pnpm.cmd test:e2e`         | Run Playwright authentication and protected-page tests.       |
+| `pnpm.cmd secret:scan`      | Scan repository content with Secretlint.                      |
+| `pnpm.cmd verify:final`     | Run the full isolated portfolio verification and screenshots. |
+| `pnpm.cmd smoke:phase6`     | Run the local Phase 6 n8n + Mailpit end-to-end smoke.         |
+| `pnpm.cmd verify`           | Run the required pull-request CI-equivalent checks.           |
+| `pnpm.cmd docker:config`    | Validate rendered Compose configuration using `.env`.         |
+| `pnpm.cmd docker:up`        | Build and start the full stack using `.env`.                  |
+| `pnpm.cmd docker:down`      | Stop containers while preserving named volumes.               |
+| `pnpm.cmd db:bootstrap`     | Idempotently prepare Phase 1 local database roles.            |
+| `pnpm.cmd db:deploy`        | Apply committed migrations with migration credentials.        |
+| `pnpm.cmd db:seed`          | Upsert the fictional Phase 1 demonstration records.           |
+| `pnpm.cmd db:validate`      | Validate the Prisma schema.                                   |
 
 Integration tests normally reset the isolated `onboarding_test` database and therefore require
 explicit Prisma reset consent. To apply outstanding test migrations without deleting retained
@@ -329,7 +358,7 @@ monitoring, and an n8n editor that is not publicly exposed.
 
 ## Current limits
 
-Phase 5 uses local MinIO and Mailpit only. Binary-signature detection is a best-effort format
-check, not malware scanning. Production still needs malware scanning/quarantine, managed object
-storage and email, TLS, key rotation, backups, monitoring, and retention policy. Phase 6 is
-intentionally not implemented; its completion event remains pending.
+The portfolio stack uses local MinIO, Mailpit, n8n, Docker Compose, and sandbox provisioning only.
+Binary-signature detection is a best-effort format check, not malware scanning. Production still
+needs malware scanning/quarantine, managed object storage and email, TLS, key rotation, backups,
+monitoring, and a retention policy.

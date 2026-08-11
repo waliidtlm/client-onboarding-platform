@@ -1,7 +1,6 @@
 # Security hardening checkpoint
 
-This checkpoint prepares the Phase 2 application for safer continued development. It does not add
-Phase 3 automation behavior.
+This checkpoint records the controls carried through Phase 7.
 
 ## Dependency advisory analysis
 
@@ -22,10 +21,16 @@ Valibot `1.4.2`, and Prisma `7.9.1`. `pnpm audit --prod` reports no known vulner
 
 ### Override policy
 
-The two overrides are intentionally scoped to dependencies of `next`:
+The original Next.js overrides remain intentionally scoped to dependencies of `next`:
 
 - `next>sharp: 0.35.3`
 - `next>postcss: 8.5.23`
+
+Two additional child-specific overrides keep newly disclosed high-severity transitive advisories
+out of the production graph without changing application APIs:
+
+- `ajv>fast-uri: 3.1.5`
+- `postcss>nanoid: 3.3.17`
 
 Next.js `16.2.12` was registry-current but still declared the vulnerable versions, so upgrading the
 direct parent was not possible. The overrides are not global and are not security suppressions.
@@ -39,8 +44,8 @@ past the quarantine window.
 
 ## Continuous verification
 
-CI uses stable major GitHub Action tags (`actions/checkout@v4`, `pnpm/action-setup@v4`, and
-`actions/setup-node@v4`). This policy receives vendor security patches within a reviewed major
+CI uses stable major GitHub Action tags (`actions/checkout@v7`, `pnpm/action-setup@v6`, and
+`actions/setup-node@v7`). This policy receives vendor security patches within a reviewed major
 version. Dependabot monitors GitHub Actions so major upgrades remain explicit.
 
 CI uses fictional, isolated PostgreSQL and staff credentials. It runs the existing database bootstrap
@@ -48,18 +53,18 @@ and destructive reset only against `onboarding_test`.
 
 ## Deployment security requirements
 
-- Login rate limiting is required before internet exposure.
+- Staff login limiting uses PostgreSQL-backed hashed IP and account subjects. Production must set
+  the exact trusted reverse-proxy hop count.
 - `N8N_SECURE_COOKIE` must be `true` behind production HTTPS.
 - The n8n editor must not be publicly exposed.
 - Production credentials must never use `.env.example` values.
 - HTTPS is required for production authentication cookies.
-- A strict Content Security Policy is deferred until Auth.js, Next.js runtime scripts, and all
-  Playwright scenarios are tested with the proposed policy. Baseline clickjacking, MIME-sniffing,
-  referrer, and browser-permission headers are enabled now.
+- The tested CSP restricts the required resource classes and becomes HTTPS-only in the production
+  profile. It is not nonce-based. Add HSTS at the production HTTPS proxy, never to local HTTP.
 - Localhost bindings protect local development only; they are not production access controls.
 
-Do not implement an in-memory login limiter. Production rate limiting must use infrastructure or a
-shared store so it remains effective across processes and replicas.
+Rate-limit database failure denies staff login and public writes. Do not replace this with an
+in-memory limiter.
 
 ## GitHub repository settings
 

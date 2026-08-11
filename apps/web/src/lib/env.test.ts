@@ -15,6 +15,8 @@ const automationEnvironment = {
   AUTOMATION_PHASE5_HMAC_SECRET: "test-phase5-hmac-secret-000000000000",
   AUTOMATION_PHASE6_SERVICE_TOKEN: "test-phase6-service-token-00000000000",
   AUTOMATION_PHASE6_HMAC_SECRET: "test-phase6-hmac-secret-000000000000",
+  AUTOMATION_PHASE7_SERVICE_TOKEN: "test-phase7-service-token-00000000000",
+  AUTOMATION_PHASE7_HMAC_SECRET: "test-phase7-hmac-secret-000000000000",
   CLIENT_ACCESS_ACTIVE_SIGNING_KEY_VERSION: "1",
   CLIENT_ACCESS_SIGNING_KEYS: '{"1":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}',
   CLIENT_ACCESS_PUBLIC_BASE_URL: "http://127.0.0.1:3100/client-access",
@@ -61,6 +63,7 @@ describe("parseServerEnvironment", () => {
       LOG_LEVEL: "debug",
       NEXTAUTH_URL: "http://127.0.0.1:3100",
       PROVISIONING_TASK_MAX_ATTEMPTS: 3,
+      DEPLOYMENT_PROFILE: "local",
     });
   });
 
@@ -126,5 +129,36 @@ describe("parseServerEnvironment", () => {
         PUBLIC_RATE_LIMIT_HMAC_SECRET: base.CLIENT_SESSION_SECRET,
       }),
     ).toThrow();
+    expect(() =>
+      parseServerEnvironment({
+        ...base,
+        AUTOMATION_PHASE7_SERVICE_TOKEN: base.AUTOMATION_PHASE6_SERVICE_TOKEN,
+      }),
+    ).toThrow();
+  });
+
+  it("requires HTTPS and an explicit proxy in the production deployment profile", () => {
+    expect(() =>
+      parseServerEnvironment({
+        ...automationEnvironment,
+        AUTH_SECRET: "test-auth-secret-with-at-least-32-characters",
+        DATABASE_URL: validDatabaseUrl,
+        NEXTAUTH_URL: "http://127.0.0.1:3100",
+        DEPLOYMENT_PROFILE: "production",
+      }),
+    ).toThrow();
+
+    const environment = parseServerEnvironment({
+      ...automationEnvironment,
+      AUTH_SECRET: "test-auth-secret-with-at-least-32-characters",
+      DATABASE_URL: validDatabaseUrl,
+      NEXTAUTH_URL: "https://onboarding.example.test",
+      APP_PUBLIC_ORIGIN: "https://onboarding.example.test",
+      CLIENT_ACCESS_PUBLIC_BASE_URL: "https://onboarding.example.test/client-access",
+      OBJECT_STORAGE_BROWSER_ENDPOINT: "https://storage.example.test",
+      TRUSTED_PROXY_HOPS: "1",
+      DEPLOYMENT_PROFILE: "production",
+    });
+    expect(environment.DEPLOYMENT_PROFILE).toBe("production");
   });
 });

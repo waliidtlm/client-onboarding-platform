@@ -9,6 +9,7 @@ export const SUPPORTED_AUTOMATION_EVENT_TYPES = [
   "KICKOFF_INVITATION_REQUESTED",
   "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED",
   "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED",
+  "REMINDER_NOTIFICATION_REQUESTED",
 ] as const;
 
 export type SupportedAutomationEventType = (typeof SUPPORTED_AUTOMATION_EVENT_TYPES)[number];
@@ -75,6 +76,24 @@ export function automationEventPayloadIsValid(
       Object.keys(record).length === 1 &&
       typeof record.notificationId === "string" &&
       /^[0-9a-f-]{36}$/i.test(record.notificationId)
+    );
+  }
+  if (eventType === "REMINDER_NOTIFICATION_REQUESTED") {
+    return (
+      Object.keys(record).length === 4 &&
+      typeof record.notificationId === "string" &&
+      /^[0-9a-f-]{36}$/i.test(record.notificationId) &&
+      typeof record.category === "string" &&
+      [
+        "CLIENT_REQUIREMENT",
+        "PROVISIONING_MANUAL_REVIEW",
+        "KICKOFF_UNSCHEDULED",
+        "DELIVERY_HANDOFF_UNACKNOWLEDGED",
+      ].includes(record.category) &&
+      typeof record.subjectId === "string" &&
+      /^[0-9a-f-]{36}$/i.test(record.subjectId) &&
+      typeof record.policyWindow === "string" &&
+      /^[A-Z0-9_]+$/.test(record.policyWindow)
     );
   }
   return false;

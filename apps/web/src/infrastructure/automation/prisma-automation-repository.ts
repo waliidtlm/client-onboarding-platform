@@ -247,6 +247,7 @@ function envelopeError(
       "KICKOFF_INVITATION_REQUESTED",
       "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED",
       "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED",
+      "REMINDER_NOTIFICATION_REQUESTED",
     ].includes(event.eventType) ||
     event.aggregateType !== "ONBOARDING"
   ) {

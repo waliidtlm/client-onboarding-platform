@@ -49,6 +49,10 @@ export default defineConfig({
         process.env.AUTOMATION_PHASE6_SERVICE_TOKEN ?? "playwright-phase6-service-token-000000000",
       AUTOMATION_PHASE6_HMAC_SECRET:
         process.env.AUTOMATION_PHASE6_HMAC_SECRET ?? "playwright-phase6-hmac-secret-00000000000",
+      AUTOMATION_PHASE7_SERVICE_TOKEN:
+        process.env.AUTOMATION_PHASE7_SERVICE_TOKEN ?? "playwright-phase7-service-token-000000000",
+      AUTOMATION_PHASE7_HMAC_SECRET:
+        process.env.AUTOMATION_PHASE7_HMAC_SECRET ?? "playwright-phase7-hmac-secret-00000000000",
       CLIENT_ACCESS_ACTIVE_SIGNING_KEY_VERSION:
         process.env.CLIENT_ACCESS_ACTIVE_SIGNING_KEY_VERSION ?? "1",
       CLIENT_ACCESS_SIGNING_KEYS:
@@ -73,8 +77,9 @@ export default defineConfig({
       DATABASE_URL: testDatabaseUrl,
       LOG_LEVEL: "silent",
       NEXTAUTH_URL: baseURL,
+      DEPLOYMENT_PROFILE: "local",
     },
-    url: `${baseURL}/api/ready`,
+    url: `${baseURL}/api/health`,
     reuseExistingServer: false,
     timeout: 120_000,
   },

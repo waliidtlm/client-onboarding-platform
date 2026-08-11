@@ -1,5 +1,32 @@
 # Architecture and data model
 
+The architecture is designed around one rule: orchestration may schedule work, but only the
+application may decide or mutate business state.
+
+## Design decisions
+
+| Decision                                 | Why it matters                                                                                             |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| PostgreSQL is the source of truth        | Commercial approval, provisioning, client submissions, reminders, and completion share transactional state |
+| n8n uses signed APIs only                | Workflow convenience does not bypass application authorization or database boundaries                      |
+| Events and attempts are durable          | Retries, leases, dead-letter handling, and operator recovery remain auditable after process failure        |
+| Client access is capability-based        | The browser receives short-lived access while PostgreSQL stores hashes instead of reusable bearer values   |
+| Notifications are frozen before delivery | A retry sends the reviewed recipient and content rather than silently recalculating them                   |
+| Read models are role-specific            | Delivery and Operations do not receive fields merely hidden by the UI                                      |
+
+## Lifecycle ownership
+
+```mermaid
+flowchart LR
+  Handoff["Sales handoff"] --> Commercial["Commercial approval"]
+  Commercial --> Provisioning["Provisioning and PM review"]
+  Provisioning --> Client["Client requirements"]
+  Client --> Kickoff["Kickoff"]
+  Kickoff --> Delivery["Delivery handoff"]
+  Delivery --> Complete["Completed"]
+  Complete --> Revoke["Client access revoked"]
+```
+
 ## Runtime boundary
 
 ```mermaid

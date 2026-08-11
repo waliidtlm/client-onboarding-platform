@@ -5,7 +5,8 @@ This checkpoint records the controls carried through Phase 7.
 ## Dependency advisory analysis
 
 The source report is stored locally at `docs/security-audit.local.json` and is intentionally ignored.
-The table records the dependency graph before remediation.
+The table is historical evidence from the Phase 7 remediation checkpoint; its dependency paths
+record the graph before remediation rather than claiming to be the current manifest.
 
 | Package and installed version | Advisory                                                                                      | Severity and affected range             | Complete production-audit path                                                                                           | Exposure in this application                                                                                                                                                                                                                   | Remediation and compatibility risk                                                                                                                                                                                                                                   |
 | ----------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -16,8 +17,11 @@ The table records the dependency graph before remediation.
 | `find-my-way 9.6.0`           | `GHSA-c96f-x56v-gq3h`                                                                         | High; `<=9.6.0`; patched `>=9.6.1`      | `@client-onboarding/web > @prisma/client 7.9.0 > prisma 7.9.0 > @prisma/dev 0.24.14 > find-my-way`                       | Marked production by the peer dependency path, but `@prisma/dev` is migration/development tooling and is not copied into the standalone web runtime. The vulnerable HTTP/2 router is not used by application routes.                           | Upgrade the direct Prisma family to patch release `7.9.1`, which selects `@prisma/dev 0.24.17` and `find-my-way 9.7.0`. Compatibility risk is low because the Prisma version change is patch-only.                                                                   |
 | `valibot 1.2.0`               | `GHSA-5qjj-4xww-7phc`                                                                         | Moderate; `<=1.4.1`; patched `>=1.4.2`  | `@client-onboarding/web > @prisma/client 7.9.0 > prisma 7.9.0 > @prisma/dev 0.24.14 > valibot`                           | Marked production by the same Prisma peer path, but it is used by Prisma development tooling rather than application request validation.                                                                                                       | Prisma `7.9.1` selects `@prisma/dev 0.24.17` and patched `valibot 1.4.2`. Compatibility risk is low.                                                                                                                                                                 |
 
-After remediation, the graph contains Sharp `0.35.3`, PostCSS `8.5.23`, find-my-way `9.7.0`,
-Valibot `1.4.2`, and Prisma `7.9.1`. `pnpm audit --prod` reports no known vulnerabilities.
+At the checkpoint, the remediated graph contained Sharp `0.35.3`, PostCSS `8.5.23`, find-my-way
+`9.7.0`, Valibot `1.4.2`, and Prisma `7.9.1`. The current manifest has since advanced to Next.js
+`16.3.0`, direct PostCSS `8.5.26`, and the other reviewed Dependabot updates while retaining the
+scoped transitive overrides below. CI requires `pnpm audit --prod` to report no known
+vulnerabilities.
 
 ### Override policy
 
@@ -32,10 +36,11 @@ out of the production graph without changing application APIs:
 - `ajv>fast-uri: 3.1.5`
 - `postcss>nanoid: 3.3.17`
 
-Next.js `16.2.12` was registry-current but still declared the vulnerable versions, so upgrading the
-direct parent was not possible. The overrides are not global and are not security suppressions.
-Dependabot monitors the direct parent so these overrides can be removed when Next declares patched
-versions itself.
+At the checkpoint, Next.js `16.2.12` was registry-current but still declared the vulnerable
+versions, so upgrading the direct parent was not possible. The direct parent is now `16.3.0`, but
+the scoped overrides remain until their transitive paths can be removed through a reviewed lockfile
+change. The overrides are not global and are not security suppressions. Dependabot continues to
+monitor the parent packages.
 
 pnpm added exact `minimumReleaseAgeExclude` entries for the Prisma `7.9.1` patch family because the
 security patch was newer than the workspace supply-chain quarantine window. These entries do not

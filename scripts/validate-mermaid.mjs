@@ -2,19 +2,30 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "..");
-const diagramFile = path.join(repositoryRoot, "docs", "architecture.md");
-const content = readFileSync(diagramFile, "utf8");
-const blocks = [...content.matchAll(/```mermaid\s+([\s\S]*?)```/g)].map((match) => match[1].trim());
+const diagramFiles = ["README.md", path.join("docs", "architecture.md")];
+const blocks = diagramFiles.flatMap((relativeFile) => {
+  const content = readFileSync(path.join(repositoryRoot, relativeFile), "utf8");
+  return [...content.matchAll(/```mermaid\s+([\s\S]*?)```/g)].map((match, index) => ({
+    block: match[1].trim(),
+    index,
+    relativeFile,
+  }));
+});
 
-if (blocks.length < 2) {
+const architectureBlocks = blocks.filter(({ relativeFile }) =>
+  relativeFile.endsWith(path.join("docs", "architecture.md")),
+);
+if (architectureBlocks.length < 2) {
   throw new Error(
     "Architecture documentation must contain both architecture and ER Mermaid diagrams",
   );
 }
 
-for (const [index, block] of blocks.entries()) {
+for (const { block, index, relativeFile } of blocks) {
   if (!/^(?:flowchart|sequenceDiagram|erDiagram)\b/.test(block)) {
-    throw new Error(`Mermaid block ${index + 1} has an unsupported or missing diagram declaration`);
+    throw new Error(
+      `${relativeFile} Mermaid block ${index + 1} has an unsupported or missing diagram declaration`,
+    );
   }
   const delimiters = block.startsWith("erDiagram")
     ? []
@@ -27,7 +38,9 @@ for (const [index, block] of blocks.entries()) {
     const opens = [...block].filter((character) => character === opening).length;
     const closes = [...block].filter((character) => character === closing).length;
     if (opens !== closes) {
-      throw new Error(`Mermaid block ${index + 1} has unbalanced ${opening}${closing}`);
+      throw new Error(
+        `${relativeFile} Mermaid block ${index + 1} has unbalanced ${opening}${closing}`,
+      );
     }
   }
 }

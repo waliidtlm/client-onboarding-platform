@@ -1,364 +1,172 @@
 # Client Onboarding Platform
 
-Agencies often coordinate sales handoff, payment, provisioning, client inputs, kickoff, and
-Delivery ownership across spreadsheets and chat. That makes blockers invisible and retries hard
-to audit.
+[![CI](https://github.com/waliidtlm/client-onboarding-platform/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/waliidtlm/client-onboarding-platform/actions/workflows/ci.yml)
 
-This platform targets small service agencies that need one controlled onboarding workflow. It
-takes a client from commercial correction through activation, provisioning, secure client
-requirements, kickoff, Delivery acknowledgment, and a terminal `COMPLETED` record.
+A production-minded workflow platform for service agencies that need to move a client from signed
+deal to delivery without losing ownership, evidence, or follow-up across spreadsheets and chat.
 
-Visual tour: [architecture and data model](docs/architecture.md), [isolated demo
-script](docs/demo-script.md), and the final screenshots in `docs/screenshots/`.
+The platform brings commercial approval, provisioning, secure client requirements, kickoff,
+Delivery handoff, reminders, recovery, and audit history into one controlled onboarding record.
 
-> Local-only demonstration components: the sandbox provisioning adapter, Mailpit, MinIO, local
-> n8n, and Docker Compose. They are not production integrations.
+> Portfolio scope: all people, companies, email addresses, messages, and files are fictional. The
+> local n8n, Mailpit, MinIO, and provisioning adapter demonstrate integration boundaries; they are
+> not presented as production services.
 
-## Phase 1 behavior
+## Product tour
 
-- Active fictional staff users sign in with local credentials.
-- Passwords are stored only as Argon2id hashes.
-- Every protected request reloads the staff record and active status from PostgreSQL.
-- All six approved roles can read onboarding overview and package configuration.
-- Delivery cannot read commercial records; those rows are not queried for Delivery requests.
-- Credentials use encrypted JWT sessions. Auth.js database session tables are intentionally absent.
-- Password recovery, MFA, and production SSO remain production improvements.
+### One workspace for ownership, blockers, and next actions
 
-## Phase 2 behavior
+![Onboarding workflow overview](docs/screenshots/dashboard.jpg)
 
-- Sales creates an inactive onboarding even when the structured handoff is incomplete.
-- A handoff can select an existing client or create a new client during validation.
-- Validated commercial terms and package activation policy are snapshotted onto the onboarding.
-- Operations controls contract status; a signed version is never rewritten by a later revision.
-- Finance issues the draft activation invoice, records payments, and makes terminal review
-  decisions.
-- The pure Commercial Gate returns an explicit status, ordered blockers, and evaluation time.
-- Gate approval and activation of the existing onboarding occur in one transaction.
-- The onboarding activation timestamp and activation audit event are created at most once.
-- Important Phase 2 mutations write whitelisted, append-only AuditEvent records.
-- Delivery cannot read commercial records, audit details, or mutation controls.
+| Completed onboarding record                                                                              | Auditable automation recovery                                                                          |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| ![Completed onboarding with delivery state and audit history](docs/screenshots/onboarding-completed.jpg) | ![Dead-letter automation recovery with safe failure details](docs/screenshots/automation-recovery.jpg) |
 
-## Phase 3 behavior
+The screenshots are generated from an isolated, deterministic fixture. Capture rejects visible
+credentials, bearer fragments, hashes, and local paths before the images are committed.
 
-- Activation and its `ONBOARDING_ACTIVATED` event commit in the same PostgreSQL transaction.
-- Workers claim one event through an authenticated API; n8n never reads the application database.
-- A claim request UUID has a retained 24-hour result, including an explicit empty result.
-- Context access is bound to the event, current run, worker, idempotency key, and live lease.
-- Callbacks and failure reports are idempotent only when their normalized terminal result matches.
-- Retryable failures use bounded backoff, operator-remediable failures stop in `FAILED`, and
-  permanent or exhausted failures stop in `DEAD_LETTER`.
-- An Admin-only recovery screen revalidates eligibility before authorizing one extra attempt.
-- Terminal automation runs and activation events are protected from deletion at the database
-  layer. Terminal runs cannot be rewritten.
-- n8n receives only its own database credentials and dedicated API-signing credentials.
+## What the workflow covers
 
-## Phase 4 behavior
+```mermaid
+flowchart LR
+  Sales["Sales handoff"] --> Gate["Commercial gate"]
+  Gate --> Provision["Provisioning"]
+  Provision --> Requirements["Secure client requirements"]
+  Requirements --> Kickoff["Kickoff"]
+  Kickoff --> Handoff["Delivery handoff"]
+  Handoff --> Complete["Completed and access revoked"]
+```
 
-- Commercial activation snapshots the purchased package's provisioning templates after an active
-  Project Manager is assigned.
-- Each task has one durable `PROVISIONING_TASK_REQUESTED:{taskId}:v1` event. Automatic and manual
-  retries reuse it.
-- Event attempts count worker delivery; provisioning attempts count only provider executions
-  reserved after task start.
-- Tasks execute in sequence. An optional task must be attempted; only its terminal manual-review
-  state may allow later work to continue.
-- Provider attempts are append-only and become `COMPLETED`, `FAILED`, or `TIMED_OUT`. Late results
-  cannot change terminal attempts.
-- The bundled provider creates only application-owned **Local sandbox resource** records with
-  stable `sandbox://` references. It does not provision Google Drive, ClickUp, Slack, CRM, or any
-  other real service.
-- Required tasks must complete or be manually accepted before internal review. Assigned active
-  Project Managers or Admins approve readiness.
-- Approval freezes one `.test` recipient, sender, subject, body, template version, and message key
-  before creating `WELCOME_EMAIL_REQUESTED`.
-- Email delivery distinguishes `PENDING`, `SENDING`, `SENT`, `FAILED`, and
-  `DELIVERY_UNCERTAIN`. Ambiguous delivery requires an Admin to confirm receipt or authorize one
-  audited resend.
-- The PM dashboard is the manual-review notification surface. Phase 4 sends no internal alert
-  email.
+- Sales can submit an incomplete handoff and correct the same onboarding record.
+- Operations and Finance control contract, invoice, payment, and activation decisions.
+- Provisioning work is durable, retryable, and subject to Project Manager approval.
+- Clients receive short-lived secure access for versioned requirement submissions and files.
+- Kickoff and Delivery handoff use frozen, revisioned records with explicit ownership.
+- Bounded reminders escalate stalled work without creating unlimited client notifications.
+- Administrators can inspect safe failure summaries and authorize eligible recovery paths.
 
-## Phase 5 behavior
+## Why this is more than a CRUD demo
 
-- Authorized staff issue access only after Phase 4 eligibility. That transaction freezes the
-  package requirement snapshots before it creates the access-email event.
-- Secure links contain a 256-bit random nonce and a signed, versioned capability. PostgreSQL
-  stores only reconstruction components and a SHA-256 hash of the complete token.
-- n8n uses a dedicated worker credential and can claim only `CLIENT_ACCESS_EMAIL_REQUESTED`.
-  It calls an authenticated application delivery endpoint, so the bearer link never enters n8n.
-- Confirmed email delivery sets `clientAccessDeliveredAt` and all snapshotted due dates once.
-  Failure or ambiguous delivery leaves due dates empty until an Admin resolves it.
-- `/client-access#token=...` removes the fragment before exchange and creates a 30-minute,
-  HttpOnly, same-site client cookie. Every request revalidates the token and onboarding.
-- Public writes require exact origin, JSON, fetch-site, a session-bound CSRF token, and
-  PostgreSQL-backed rate limits: exchange IP 10/10m, valid token 5/10m, session mutations 30/5m,
-  and upload intents 20/10m. Limiter failures deny the request.
-- Direct uploads use five-minute URLs for one temporary object in a private MinIO bucket. The
-  server checks size, SHA-256, detected type, ownership, and intent state before copying to an
-  immutable final key.
-- Submissions are immutable versions. Admin or the assigned active Project Manager reviews the
-  exact latest version; Operations sees metadata only.
-- Approval of the last mandatory item atomically moves the onboarding to
-  `CLIENT_REQUIREMENTS_COMPLETE` and leaves exactly one `CLIENT_REQUIREMENTS_COMPLETED` event
+| Engineering concern    | Implementation evidence                                                                                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Business integrity     | PostgreSQL transactions, immutable snapshots, append-only audit records, and explicit state transitions                                                               |
+| Automation reliability | Transactional outbox events, leases, idempotency keys, bounded retries, dead-letter handling, and recovery controls                                                   |
+| Security               | Argon2id passwords, role-based query boundaries, hashed capability tokens, HMAC-authenticated worker APIs, CSRF/origin checks, rate limits, and environment-aware CSP |
+| Data isolation         | Separate application, test, migration, shadow, and n8n databases with non-superuser roles                                                                             |
+| Verification           | Unit, PostgreSQL integration, Playwright, migration, workflow-export, documentation, secret, dependency, and production-build checks in CI                            |
+| Honest boundaries      | Local adapters are labeled as demonstrations and production requirements are documented separately                                                                    |
 
-## Phase 6 behavior
+## Architecture
 
-- A dedicated worker identity claims only the four Phase 6 event types and passes identifiers to
-  operation-specific application endpoints.
-- Scheduling uses local date/time plus an IANA timezone, rejects nonexistent times, and requires
-  an earlier/later choice for repeated times.
-- The application freezes and sends revisioned kickoff, Delivery handoff, and cancellation email;
-  uncertain delivery never resends automatically.
-- Kickoff completion creates one frozen, fingerprinted Delivery handoff and moves the onboarding
-  to `PROJECT_READY`.
-- Assigned active Delivery users see only approved current client content and the frozen handoff.
-  Acknowledgment completes the onboarding, calculates the snapshotted SLA, and revokes client
-  access.
+```mermaid
+flowchart LR
+  Staff["Agency staff"] --> App["Next.js application"]
+  Client["Client portal"] --> App
+  App --> DB[("Application PostgreSQL")]
+  App --> Storage["Private object storage"]
+  App --> Mail["SMTP provider"]
+  N8N["n8n scheduler/workers"] -->|"Signed narrow APIs"| App
+  N8N --> N8NDB[("Separate n8n PostgreSQL")]
+```
 
-## Phase 7 behavior
+The application—not n8n—owns business decisions, authorization, policy evaluation, recipient
+selection, and terminal state. n8n receives identifiers, schedules work, and calls narrow signed
+APIs without application-database credentials.
 
-- The application owns four bounded policies: mandatory client requirements, provisioning manual
-  review, unscheduled kickoff, and unacknowledged Delivery handoff.
-- Client requirements receive one due-soon notice and at most three overdue notices. The PM is
-  escalated after 72 hours and Operations is the final recipient after 168 hours.
-- Provisioning review, kickoff, and handoff policies are staff-only and finish with an Admin
-  escalation. Deterministic policy-window keys make 15-minute polling replay-safe.
-- Staff login failures use PostgreSQL-backed IP and normalized-account windows. Stored subjects
-  are HMAC hashes, responses are generic, successful authentication clears the account window,
-  and limiter failures deny login.
-- The environment-aware CSP supports local Next.js and MinIO while requiring HTTPS public origins
-  in production. It is intentionally not a nonce-based policy.
-- The Admin recovery page defaults to failed/dead-letter events, shows safe summaries, and exposes
-  retry only for event types supported by a dedicated recovery path.
-- Onboarding detail includes a safe unified audit timeline. Delivery receives only its restricted
-  action subset.
+See [Architecture and data model](docs/architecture.md) for the entity model, trust boundaries,
+and reminder sequence.
 
-## Architecture boundary
+## Technology
 
-- PostgreSQL is the source of business truth.
-- The Next.js application will own business-state transitions.
-- n8n orchestrates through narrow application-owned APIs and does not make business decisions.
-- n8n has a separate database and cannot connect to the application database.
+- Next.js 16, React 19, TypeScript, Auth.js, and Zod
+- PostgreSQL 18, Prisma 7, and isolated database roles
+- n8n for orchestration through application-owned APIs
+- MinIO-compatible private object storage and SMTP delivery boundaries
+- Vitest, Playwright, Secretlint, Prettier, ESLint, Docker, and GitHub Actions
+- pnpm workspace monorepo
 
-## Prerequisites
+## Verification evidence
 
-- Node.js 24.16.0 or newer in the Node 24 line
-- pnpm 11.9.0
-- Docker 29.6.1 or compatible
-- Docker Compose 5.3.0 or compatible
+The required pull-request workflow validates:
 
-PowerShell can block `pnpm.ps1`. The examples therefore use `pnpm.cmd`.
+1. frozen dependency installation and Prisma schema validity;
+2. formatting, ESLint, and strict TypeScript;
+3. unit and Route Handler tests;
+4. PostgreSQL integration tests and the applied migration chain;
+5. Chromium installation and Playwright application tests;
+6. n8n exports and documentation links;
+7. the production build, committed-secret scan, production dependency audit, and clean diff.
 
-## First-time setup
+The accepted Phase 7 portfolio gate includes 180 unit/route tests, 52 PostgreSQL integration
+tests, and 17 Playwright scenarios. The isolated demo adds Mailpit, MinIO, n8n, lifecycle, retry,
+recovery, reminder, revocation, screenshot, and redaction evidence.
 
-Install dependencies:
+## Run the isolated portfolio demo
+
+Prerequisites:
+
+- Node.js 24.16 or newer in the Node 24 line
+- pnpm 11.9
+- Docker with Compose
+
+Install dependencies and the browser once:
 
 ```powershell
 pnpm.cmd install --frozen-lockfile
+pnpm.cmd --filter @client-onboarding/web exec playwright install chromium
 ```
 
-Create the local runtime environment:
+Run the isolated end-to-end scenario:
 
 ```powershell
-Copy-Item .env.example .env
+pnpm.cmd demo:phase7
 ```
 
-`.env.example` is documentation only. Docker Compose commands use `.env`. Never commit `.env`,
-and replace every development-only value before using this setup outside a local machine.
+The demo uses its own Compose project, databases, volumes, loopback ports, fictional `.test`
+recipients, and exact fixture marker. It verifies the lifecycle through `COMPLETED`, then refreshes
+the redaction-checked screenshots.
 
-The [security hardening checkpoint](docs/security-hardening.md) documents dependency remediation,
-CI policy, local credential separation, and requirements that must be completed before internet
-deployment.
-
-See the [deployment guide](docs/deployment.md) and [known limitations](docs/known-limitations.md)
-before adapting the portfolio stack.
-
-Add the Phase 1 variables from `.env.example` to an older Phase 0 `.env`. In particular, configure:
-
-- migration, test, and shadow database names/users/passwords;
-- a random `AUTH_SECRET` containing at least 32 characters;
-- one local-only `DEMO_STAFF_PASSWORD`;
-- `WEB_PORT` and a matching host URL.
-
-Phase 3 also requires independent random values of at least 32 characters for
-`AUTOMATION_SERVICE_TOKEN` and `AUTOMATION_HMAC_SECRET`. These are service authentication
-credentials, not idempotency keys. See
-[automation/n8n/README.md](automation/n8n/README.md) for import and activation instructions.
-
-The demo password is intentionally shared by fictional users for a repeatable portfolio
-demonstration. It must never be reused outside local development and is never stored in plaintext
-in PostgreSQL.
-
-Install the Playwright Chromium browser:
+Clean only demo-owned resources:
 
 ```powershell
-pnpm.cmd exec playwright install chromium
+pnpm.cmd demo:phase7:cleanup
 ```
 
-## Run locally
-
-Start PostgreSQL, MinIO, n8n, and Mailpit:
+Run the complete portfolio verification gate:
 
 ```powershell
-docker compose --env-file .env up -d postgres minio minio-bootstrap n8n mailpit
+pnpm.cmd verify:final
 ```
 
-For an existing Phase 0 PostgreSQL volume, add the Phase 1 roles and databases without deleting
-the volume:
+See the [portfolio demo guide](docs/demo-script.md) for the evaluator walkthrough and expected
+evidence. For regular development, use the [technical reference](docs/technical-reference.md).
 
-```powershell
-pnpm.cmd db:bootstrap
-```
+## Documentation map
 
-Apply migrations and seed the fictional case:
+| Document                                            | Purpose                                                                   |
+| --------------------------------------------------- | ------------------------------------------------------------------------- |
+| [Architecture and data model](docs/architecture.md) | Runtime ownership, trust boundaries, entities, and reminder flow          |
+| [Portfolio demo guide](docs/demo-script.md)         | Automated scenario, evaluator walkthrough, evidence, and cleanup          |
+| [Technical reference](docs/technical-reference.md)  | Local development, commands, accounts, endpoints, and database isolation  |
+| [Security hardening](docs/security-hardening.md)    | Dependency remediation, CI controls, and deployment security requirements |
+| [Deployment guide](docs/deployment.md)              | Local stack boundary and production requirements                          |
+| [Known limitations](docs/known-limitations.md)      | Deliberate portfolio limits and remaining production work                 |
 
-```powershell
-pnpm.cmd db:deploy
-pnpm.cmd db:seed
-```
-
-Start the web application on the host:
-
-```powershell
-pnpm.cmd dev
-```
-
-Or start the complete containerized stack:
-
-```powershell
-pnpm.cmd docker:up
-```
-
-The host web port comes from `WEB_PORT`. If the default is occupied, set it to `3001`. The local
-development wrapper derives `NEXTAUTH_URL` from that same value. Playwright uses
-`PLAYWRIGHT_PORT`, so its server URL and browser base URL always match.
-
-Mailpit's local inbox is `http://127.0.0.1:8025`. Its SMTP listener is available only inside
-Compose at `mailpit:1025`.
-
-## Fictional staff accounts
-
-The seed creates one account for each approved role:
+## Repository layout
 
 ```text
-admin@northstar.test
-sales@northstar.test
-operations@northstar.test
-finance@northstar.test
-pm@northstar.test
-delivery@northstar.test
-disabled@northstar.test
+apps/web/                  Next.js application, Prisma schema, tests, and demo tooling
+automation/n8n/            Inactive, validated workflow exports
+docker/postgres/init/      Isolated PostgreSQL role/database bootstrap
+docs/                      Architecture, demo, security, deployment, and screenshots
+scripts/                   Repository verification and isolated demo orchestration
 ```
 
-Use the ignored local `DEMO_STAFF_PASSWORD`. The disabled account exists only to demonstrate
-rejection.
+## Status and limitations
 
-## Endpoints
+This is a complete local portfolio implementation through the accepted Phase 7 scope. It is not
+a hosted SaaS product or a production deployment template. Production adoption still requires
+managed services, SSO/MFA, malware scanning, TLS, secrets management, backups, monitoring,
+retention policy, and reviewed infrastructure controls.
 
-- `GET /api/health` checks whether the web process is alive.
-- `GET /api/ready` executes `SELECT 1` against PostgreSQL. It returns `503` without exposing
-  connection details when PostgreSQL is unavailable.
-- n8n exposes its built-in health endpoint at `GET /healthz`.
-- `POST /api/internal/automation/claim` leases one eligible event or returns `204`.
-- `GET /api/internal/automation/events/:eventId/context` returns minimal current-run context.
-- `POST /api/internal/automation/events/:eventId/callback` records a matching completion.
-- `POST /api/internal/automation/events/:eventId/failure` records a matching classified failure.
-- `POST /api/internal/automation/provisioning/initialize` snapshots package tasks.
-- `POST /api/internal/automation/provisioning/tasks/:taskId/start` reserves one provider attempt.
-- `POST /api/internal/automation/provisioning/tasks/:taskId/execute` invokes the Local sandbox
-  resource adapter.
-- `POST /api/internal/automation/provisioning/tasks/:taskId/complete` and `/failure` record the
-  bound attempt result.
-- `POST /api/internal/automation/welcome-email/begin` returns frozen delivery data and marks the
-  notification sending.
-- `POST /api/internal/automation/welcome-email/result` records sent, rejected, or uncertain
-  delivery.
-- `POST /api/internal/automation/client-access-email/deliver` reconstructs and sends a frozen
-  secure-access email without returning the bearer link to n8n.
-- `POST /api/internal/automation/phase6/kickoff/initialize` handles the completion event and
-  creates the pending Kickoff atomically.
-- `POST /api/internal/automation/phase6/notifications/deliver` performs application-owned Phase 6
-  SMTP delivery.
-
-All internal automation endpoints require a dedicated bearer token plus a timestamped HMAC over
-the exact method, path and query, timestamp, and raw-body hash. Authentication runs before JSON
-parsing or database work.
-
-Build-time validation and runtime readiness are intentionally separate:
-
-- `next build` compiles the application without connecting to PostgreSQL.
-- Server startup validates required environment variables with Zod.
-- `/api/ready` performs the live dependency check.
-
-## Root commands
-
-| Command                     | Purpose                                                       |
-| --------------------------- | ------------------------------------------------------------- |
-| `pnpm.cmd dev`              | Start the Next.js development server.                         |
-| `pnpm.cmd build`            | Create the production Next.js build.                          |
-| `pnpm.cmd format`           | Apply Prettier formatting.                                    |
-| `pnpm.cmd format:check`     | Check formatting without changing files.                      |
-| `pnpm.cmd lint`             | Run ESLint with zero warnings allowed.                        |
-| `pnpm.cmd n8n:validate`     | Validate the committed inactive n8n workflow exports.         |
-| `pnpm.cmd typecheck`        | Generate Next.js route types and run strict TypeScript.       |
-| `pnpm.cmd test`             | Run Vitest unit and Route Handler tests.                      |
-| `pnpm.cmd test:integration` | Run real PostgreSQL integration and role-isolation tests.     |
-| `pnpm.cmd test:e2e`         | Run Playwright authentication and protected-page tests.       |
-| `pnpm.cmd secret:scan`      | Scan repository content with Secretlint.                      |
-| `pnpm.cmd verify:final`     | Run the full isolated portfolio verification and screenshots. |
-| `pnpm.cmd smoke:phase6`     | Run the local Phase 6 n8n + Mailpit end-to-end smoke.         |
-| `pnpm.cmd verify`           | Run the required pull-request CI-equivalent checks.           |
-| `pnpm.cmd docker:config`    | Validate rendered Compose configuration using `.env`.         |
-| `pnpm.cmd docker:up`        | Build and start the full stack using `.env`.                  |
-| `pnpm.cmd docker:down`      | Stop containers while preserving named volumes.               |
-| `pnpm.cmd db:bootstrap`     | Idempotently prepare Phase 1 local database roles.            |
-| `pnpm.cmd db:deploy`        | Apply committed migrations with migration credentials.        |
-| `pnpm.cmd db:seed`          | Upsert the fictional Phase 1 demonstration records.           |
-| `pnpm.cmd db:validate`      | Validate the Prisma schema.                                   |
-
-Integration tests normally reset the isolated `onboarding_test` database and therefore require
-explicit Prisma reset consent. To apply outstanding test migrations without deleting retained
-test rows, set `INTEGRATION_PRESERVE_DATABASE=1` for that run. Never point either mode at a
-production database.
-
-## Database isolation
-
-The PostgreSQL initialization and idempotent bootstrap create:
-
-| Database            | Login                       |
-| ------------------- | --------------------------- |
-| `onboarding_app`    | `onboarding_app_user`       |
-| `onboarding_test`   | `onboarding_test_user`      |
-| `onboarding_shadow` | `onboarding_migration_user` |
-| `n8n_internal`      | `n8n_user`                  |
-
-The runtime, test, migration, and n8n roles are non-superusers without database-creation or
-role-creation privileges. The migration role owns the application/test schema and shadow
-database. Runtime roles receive only their matching database access. The n8n container receives
-only n8n credentials.
-
-The initialization script runs only when `postgres_data` is empty. If the initialization
-configuration changes, use a migration. Deleting the volume with `docker compose down -v` is
-destructive and should only be used when intentionally resetting disposable local data.
-
-## Persistent data
-
-Compose creates two named volumes:
-
-- `postgres_data` for PostgreSQL databases
-- `n8n_data` for n8n configuration and operational data
-
-`docker compose down` preserves both volumes.
-
-## Production notes
-
-The web Dockerfile produces a standalone Next.js build and runs as a non-root user. The supplied
-Compose configuration is a local development baseline, not a complete production deployment.
-Production still requires externally managed secrets, TLS, backups, restricted network access,
-monitoring, and an n8n editor that is not publicly exposed.
-
-## Current limits
-
-The portfolio stack uses local MinIO, Mailpit, n8n, Docker Compose, and sandbox provisioning only.
-Binary-signature detection is a best-effort format check, not malware scanning. Production still
-needs malware scanning/quarantine, managed object storage and email, TLS, key rotation, backups,
-monitoring, and a retention policy.
+Read [Known limitations](docs/known-limitations.md) before evaluating production use.

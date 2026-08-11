@@ -4,7 +4,7 @@ import path from "node:path";
 const workflowsDirectory = path.resolve("automation/n8n/workflows");
 const files = (await readdir(workflowsDirectory)).filter((file) => file.endsWith(".json")).sort();
 
-if (files.length !== 5) {
+if (files.length !== 6) {
   throw new Error(`Expected the Phase 3–6 consumers and shared handler; found ${files.length}`);
 }
 
@@ -54,6 +54,9 @@ const phase5 = JSON.parse(
 const phase6 = JSON.parse(
   await readFile(path.join(workflowsDirectory, "phase6-kickoff-delivery-handoff.json"), "utf8"),
 );
+const phase7 = JSON.parse(
+  await readFile(path.join(workflowsDirectory, "phase7-reminders-and-escalations.json"), "utf8"),
+);
 if (phase4.settings?.errorWorkflow !== "phase3-automation-error-handler") {
   throw new Error("The Phase 4 consumer must reference the shared error workflow");
 }
@@ -61,6 +64,7 @@ if (
   phase4.active !== false ||
   phase5.active !== false ||
   phase6.active !== false ||
+  phase7.active !== false ||
   consumer.active !== false
 ) {
   throw new Error("All polling consumer exports must remain inactive");
@@ -69,7 +73,8 @@ if (
   phase4.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1 ||
   consumer.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1 ||
   phase5.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1 ||
-  phase6.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1
+  phase6.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1 ||
+  phase7.nodes.filter((node) => node.type === "n8n-nodes-base.scheduleTrigger").length !== 1
 ) {
   throw new Error("Each retained consumer export must have exactly one polling trigger");
 }
@@ -112,6 +117,34 @@ if (
 ) {
   throw new Error("The Phase 5 workflow must disable execution-data persistence");
 }
+if (
+  phase4.settings?.saveDataErrorExecution !== "none" ||
+  phase4.settings?.saveDataSuccessExecution !== "none" ||
+  phase4.settings?.saveManualExecutions !== false
+) {
+  throw new Error("The Phase 4 workflow must disable execution-data persistence");
+}
+const phase7Source = JSON.stringify(phase7);
+if (
+  !phase7Source.includes("AUTOMATION_PHASE7_SERVICE_TOKEN") ||
+  !phase7Source.includes("REMINDER_NOTIFICATION_REQUESTED") ||
+  !phase7Source.includes("/api/internal/automation/reminders/evaluate") ||
+  !phase7Source.includes("/api/internal/automation/reminders/deliver") ||
+  /dueAt|thresholdHours|OVERDUE_1/.test(phase7Source)
+) {
+  throw new Error("The Phase 7 workflow must orchestrate IDs without reminder business rules");
+}
+const phase7Schedule = phase7.nodes.find((node) => node.type === "n8n-nodes-base.scheduleTrigger");
+if (phase7Schedule?.parameters?.rule?.interval?.[0]?.minutesInterval !== 15) {
+  throw new Error("The Phase 7 workflow must poll every 15 minutes");
+}
+if (
+  phase7.settings?.saveDataErrorExecution !== "none" ||
+  phase7.settings?.saveDataSuccessExecution !== "none" ||
+  phase7.settings?.saveManualExecutions !== false
+) {
+  throw new Error("The Phase 7 workflow must disable execution-data persistence");
+}
 const emailNode = phase4.nodes.find((node) => node.type === "n8n-nodes-base.emailSend");
 if (!emailNode || emailNode.credentials) {
   throw new Error("The Phase 4 email node must not export an SMTP credential");
@@ -127,6 +160,4 @@ for (const node of phase4.nodes) {
   }
 }
 
-console.log(
-  `Validated ${files.length} inactive exports including isolated Phase 5 and Phase 6 consumers.`,
-);
+console.log(`Validated ${files.length} inactive exports including isolated Phase 5-7 consumers.`);

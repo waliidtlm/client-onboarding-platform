@@ -24,4 +24,13 @@ test("adds baseline security headers", async ({ request }) => {
   expect(response.headers()["referrer-policy"]).toBe("strict-origin-when-cross-origin");
   expect(response.headers()["permissions-policy"]).toContain("camera=()");
   expect(response.headers()["x-frame-options"]).toBe("DENY");
+  const csp = response.headers()["content-security-policy"];
+  expect(csp).toContain("default-src 'self'");
+  expect(csp).toContain("object-src 'none'");
+  expect(csp).toContain("base-uri 'self'");
+  expect(csp).toContain("frame-ancestors 'none'");
+  expect(csp).toContain("form-action 'self'");
+  expect(csp).toContain("connect-src 'self' http://127.0.0.1:");
+  expect(csp).toContain("img-src 'self' data: blob:");
+  expect(csp).not.toContain("upgrade-insecure-requests");
 });

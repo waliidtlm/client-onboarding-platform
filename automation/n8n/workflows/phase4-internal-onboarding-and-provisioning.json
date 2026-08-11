@@ -278,7 +278,9 @@
   "settings": {
     "executionOrder": "v1",
     "errorWorkflow": "phase3-automation-error-handler",
-    "saveManualExecutions": true
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
   },
   "versionId": "71902054-2828-4d63-8329-e4196afbf1ee",
   "meta": { "templateCredsSetupCompleted": false },

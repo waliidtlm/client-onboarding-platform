@@ -32,10 +32,12 @@ afterAll(async () => {
 describe("Phase 1 data integrity", () => {
   it("uses dedicated test and shadow targets and refuses the application database", () => {
     const testDatabaseName = process.env.TEST_DB_NAME ?? "onboarding_test";
+    const shadowDatabaseName = process.env.SHADOW_DB_NAME ?? "onboarding_shadow";
+    const applicationDatabaseName = process.env.APP_DB_NAME ?? "onboarding_app";
     expect(new URL(testRuntimeUrl).pathname).toBe(`/${testDatabaseName}`);
     expect(new URL(testMigrationUrl).pathname).toBe(`/${testDatabaseName}`);
-    expect(new URL(process.env.SHADOW_DATABASE_URL ?? "").pathname).toBe("/onboarding_shadow");
-    expect(new URL(testMigrationUrl).pathname).not.toBe("/onboarding_app");
+    expect(new URL(process.env.SHADOW_DATABASE_URL ?? "").pathname).toBe(`/${shadowDatabaseName}`);
+    expect(new URL(testMigrationUrl).pathname).not.toBe(`/${applicationDatabaseName}`);
   });
 
   it("keeps the seed repeatable with predictable counts", async () => {

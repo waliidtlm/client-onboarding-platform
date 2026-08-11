@@ -102,7 +102,12 @@ test.describe.serial("Phase 2 commercial workflow", () => {
     await page.getByRole("button", { name: "Save payment review" }).click();
     await expect(page.getByText("READY FOR ONBOARDING")).toBeVisible();
     await expect(page.getByText("Commercial Gate: APPROVED")).toBeVisible();
-    await expect(page.getByText("ONBOARDING ACTIVATED")).toHaveCount(1);
+    await expect(
+      page
+        .getByRole("heading", { name: "Phase 2 audit timeline" })
+        .locator("..")
+        .getByText("ONBOARDING ACTIVATED"),
+    ).toHaveCount(1);
   });
 
   test("repeated activation recalculation leaves one activation audit event", async ({ page }) => {
@@ -113,6 +118,11 @@ test.describe.serial("Phase 2 commercial workflow", () => {
     await page.getByRole("button", { name: "Recalculate gate" }).click();
 
     await expect(page.getByText("READY FOR ONBOARDING")).toBeVisible();
-    await expect(page.getByText("ONBOARDING ACTIVATED")).toHaveCount(1);
+    await expect(
+      page
+        .getByRole("heading", { name: "Phase 2 audit timeline" })
+        .locator("..")
+        .getByText("ONBOARDING ACTIVATED"),
+    ).toHaveCount(1);
   });
 });

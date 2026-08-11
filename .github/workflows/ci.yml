@@ -29,6 +29,10 @@ env:
   AUTOMATION_HMAC_SECRET: CI_ONLY_automation_hmac_secret_not_a_secret_0000
   AUTOMATION_PHASE5_SERVICE_TOKEN: CI_ONLY_phase5_service_token_not_a_secret_000000
   AUTOMATION_PHASE5_HMAC_SECRET: CI_ONLY_phase5_hmac_secret_not_a_secret_000000
+  AUTOMATION_PHASE6_SERVICE_TOKEN: CI_ONLY_phase6_service_token_not_a_secret_000000
+  AUTOMATION_PHASE6_HMAC_SECRET: CI_ONLY_phase6_hmac_secret_not_a_secret_000000
+  AUTOMATION_PHASE7_SERVICE_TOKEN: CI_ONLY_phase7_service_token_not_a_secret_000000
+  AUTOMATION_PHASE7_HMAC_SECRET: CI_ONLY_phase7_hmac_secret_not_a_secret_000000
   AUTOMATION_SIGNATURE_MAX_AGE_SECONDS: 300
   AUTOMATION_LEASE_SECONDS: 300
   AUTOMATION_MAX_ATTEMPTS: 5
@@ -48,6 +52,7 @@ env:
   SMTP_HOST: 127.0.0.1
   SMTP_PORT: 1025
   NEXTAUTH_URL: http://127.0.0.1:3100
+  DEPLOYMENT_PROFILE: local
   TEST_STAFF_PASSWORD: CI_ONLY_fictional_staff_password
 
 jobs:
@@ -129,6 +134,21 @@ jobs:
       - name: Run PostgreSQL integration tests
         run: pnpm test:integration
 
+      - name: Check applied migration chain
+        run: pnpm prisma migrate status --config prisma.test.config.ts
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run Playwright application tests
+        run: pnpm test:e2e
+
+      - name: Validate n8n workflow exports
+        run: pnpm n8n:validate
+
+      - name: Validate documentation links
+        run: pnpm docs:links
+
       - name: Build production application
         run: pnpm build
 
@@ -139,4 +159,4 @@ jobs:
         run: pnpm audit --prod --audit-level high
 
       - name: Check generated diff and whitespace
-        run: git diff --check
+        run: pnpm git:diff-check

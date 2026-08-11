@@ -10,6 +10,8 @@ export const RATE_LIMITS = {
   TOKEN_EXCHANGE_RECORD: { limit: 5, windowSeconds: 10 * 60 },
   PUBLIC_MUTATION_SESSION: { limit: 30, windowSeconds: 5 * 60 },
   UPLOAD_INTENT_SESSION: { limit: 20, windowSeconds: 10 * 60 },
+  STAFF_LOGIN_IP: { limit: 30, windowSeconds: 15 * 60 },
+  STAFF_LOGIN_ACCOUNT: { limit: 10, windowSeconds: 15 * 60 },
 } as const;
 
 export type RateLimitScope = keyof typeof RATE_LIMITS;
@@ -97,5 +99,16 @@ export async function consumeRateLimit(
         ),
       ),
     };
+  });
+}
+
+export async function resetRateLimit(
+  scope: RateLimitScope,
+  subject: string,
+  database: PrismaClient = prisma,
+): Promise<void> {
+  const subjectHash = rateLimitSubjectHash(scope, subject);
+  await database.publicRateLimitBucket.deleteMany({
+    where: { scope, subjectHash },
   });
 }

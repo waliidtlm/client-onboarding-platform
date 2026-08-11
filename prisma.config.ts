@@ -12,14 +12,22 @@ if (!databaseUrl) {
   throw new Error("MIGRATION_DATABASE_URL or DATABASE_URL is required");
 }
 
-if (databaseName(databaseUrl) !== "onboarding_app") {
-  throw new Error("Application migrations must target onboarding_app");
+const targetDatabaseName = databaseName(databaseUrl);
+const exactPhase7Demo =
+  targetDatabaseName === "onboarding_phase7_demo" &&
+  process.env.PHASE7_DEMO_FIXTURE_MARKER === "PHASE7_DEMO_FIXTURE_v1";
+if (targetDatabaseName !== "onboarding_app" && !exactPhase7Demo) {
+  throw new Error("Application migrations must target onboarding_app or the exact Phase 7 demo");
 }
 
 const shadowDatabaseUrl = process.env.SHADOW_DATABASE_URL;
 
-if (shadowDatabaseUrl && databaseName(shadowDatabaseUrl) !== "onboarding_shadow") {
-  throw new Error("SHADOW_DATABASE_URL must target onboarding_shadow");
+if (
+  shadowDatabaseUrl &&
+  !exactPhase7Demo &&
+  databaseName(shadowDatabaseUrl) !== "onboarding_shadow"
+) {
+  throw new Error("SHADOW_DATABASE_URL must target the matching isolated shadow database");
 }
 
 export default defineConfig({

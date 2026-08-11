@@ -1,0 +1,58 @@
+{
+  "name": "Phase 7 Reminders and Escalations",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "2b345540-4962-4fa9-b68d-a79b01fe4657",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, -80]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 15 }]
+        }
+      },
+      "id": "3faf1eed-f2ce-485c-8a29-df084a9db354",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 80]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto'),http=require('http'),https=require('https');const base=$env.AUTOMATION_API_BASE_URL,token=$env.AUTOMATION_PHASE7_SERVICE_TOKEN,secret=$env.AUTOMATION_PHASE7_HMAC_SECRET,workerId=$env.AUTOMATION_PHASE7_WORKER_ID;if(!base||!token||!secret||!workerId)throw new Error('AUTOMATION_CONFIGURATION_INVALID');async function send(path,body){const text=JSON.stringify(body),ts=String(Math.floor(Date.now()/1000)),hash=crypto.createHash('sha256').update(text).digest('hex'),sig='sha256='+crypto.createHmac('sha256',secret).update(`POST\\n${path}\\n${ts}\\n${hash}`).digest('hex'),transport=base.startsWith('https:')?https:http;return await new Promise((resolve,reject)=>{const req=transport.request(base+path,{method:'POST',headers:{authorization:`Bearer ${token}`,'x-automation-timestamp':ts,'x-automation-signature':sig,'content-type':'application/json'},timeout:30000},res=>{let value='';res.on('data',chunk=>{if(value.length<65536)value+=chunk;});res.on('end',()=>{let parsed=null;try{parsed=value?JSON.parse(value):null;}catch{}resolve({status:res.statusCode||0,body:parsed});});});req.on('timeout',()=>req.destroy(new Error('NETWORK_TIMEOUT')));req.on('error',reject);req.write(text);req.end();});}const evaluation=await send('/api/internal/automation/reminders/evaluate',{requestId:crypto.randomUUID()});if(evaluation.status<200||evaluation.status>=300)throw new Error('REMINDER_EVALUATION_FAILED');const claim=await send('/api/internal/automation/claim',{requestId:crypto.randomUUID(),workerId,workflowName:'Phase 7 Reminders and Escalations',supportedEventTypes:['REMINDER_NOTIFICATION_REQUESTED']});if(claim.status===204)return[{json:{outcome:'EMPTY',createdCount:evaluation.body?.createdCount||0}}];if(claim.status<200||claim.status>=300||claim.body?.kind!=='CLAIMED')throw new Error('AUTOMATION_CLAIM_FAILED');const run={eventId:claim.body.event.eventId,runId:claim.body.run.runId,idempotencyKey:claim.body.run.idempotencyKey,workerId,n8nExecutionId:String($execution.id)},result=await send('/api/internal/automation/reminders/deliver',run);if(result.status<200||result.status>=300)throw new Error('REMINDER_DELIVERY_FAILED');return[{json:{outcome:'COMPLETED',eventId:run.eventId,runId:run.runId}}];"
+      },
+      "id": "e8c3b650-9a86-4ca4-a1fc-95d47ff72e4a",
+      "name": "Evaluate Claim and Deliver",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [260, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Evaluate Claim and Deliver", "type": "main", "index": 0 }]]
+    },
+    "Every 15 Minutes": {
+      "main": [[{ "node": "Evaluate Claim and Deliver", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "phase3-automation-error-handler",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-07-29T00:00:00.000Z",
+  "versionId": "f8776b2f-e9cd-48ad-abee-702016ba105b",
+  "active": false,
+  "id": "phase7-reminders-and-escalations"
+}

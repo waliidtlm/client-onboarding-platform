@@ -42,6 +42,9 @@ async function canConnect(connectionString: string): Promise<boolean> {
 
 describe("PostgreSQL role isolation", () => {
   const isolatedTestDatabase = process.env.TEST_DB_NAME ?? "onboarding_test";
+  const applicationDatabase = process.env.APP_DB_NAME ?? "onboarding_app";
+  const shadowDatabase = process.env.SHADOW_DB_NAME ?? "onboarding_shadow";
+  const n8nDatabase = process.env.N8N_DB_NAME ?? "n8n_internal";
   const appRuntime = requireUrl("APP_RUNTIME_DATABASE_URL");
   const testRuntime = requireUrl("TEST_DATABASE_URL");
   const migration = requireUrl("MIGRATION_DATABASE_URL");
@@ -51,29 +54,29 @@ describe("PostgreSQL role isolation", () => {
     await expect(canConnect(appRuntime)).resolves.toBe(true);
     await expect(canConnect(testRuntime)).resolves.toBe(true);
     await expect(canConnect(migration)).resolves.toBe(true);
-    await expect(canConnect(targetDatabase(migration, "onboarding_shadow"))).resolves.toBe(true);
+    await expect(canConnect(targetDatabase(migration, shadowDatabase))).resolves.toBe(true);
     await expect(canConnect(n8n)).resolves.toBe(true);
   });
 
-  it.each([isolatedTestDatabase, "onboarding_shadow", "n8n_internal"])(
+  it.each([isolatedTestDatabase, shadowDatabase, n8nDatabase])(
     "blocks the runtime application user from %s",
     async (database) => {
       await expect(canConnect(targetDatabase(appRuntime, database))).resolves.toBe(false);
     },
   );
 
-  it.each(["onboarding_app", "onboarding_shadow", "n8n_internal"])(
+  it.each([applicationDatabase, shadowDatabase, n8nDatabase])(
     "blocks the test runtime user from %s",
     async (database) => {
       await expect(canConnect(targetDatabase(testRuntime, database))).resolves.toBe(false);
     },
   );
 
-  it("blocks the migration user from n8n_internal", async () => {
-    await expect(canConnect(targetDatabase(migration, "n8n_internal"))).resolves.toBe(false);
+  it("blocks the migration user from the n8n database", async () => {
+    await expect(canConnect(targetDatabase(migration, n8nDatabase))).resolves.toBe(false);
   });
 
-  it.each(["onboarding_app", isolatedTestDatabase, "onboarding_shadow"])(
+  it.each([applicationDatabase, isolatedTestDatabase, shadowDatabase])(
     "blocks the n8n role from %s",
     async (database) => {
       await expect(canConnect(targetDatabase(n8n, database))).resolves.toBe(false);

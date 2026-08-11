@@ -24,11 +24,18 @@
     "docker:down": "docker compose --env-file .env down",
     "docker:logs": "docker compose --env-file .env logs --follow",
     "docker:up": "docker compose --env-file .env up --build -d",
+    "docs:links": "node scripts/validate-doc-links.mjs",
+    "docs:mermaid:validate": "node scripts/validate-mermaid.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "git:diff-check": "node scripts/git-diff-check.mjs",
+    "history:scan": "node scripts/scan-git-history.mjs",
     "lint": "pnpm --filter @client-onboarding/web lint",
     "n8n:validate": "node scripts/validate-n8n-workflows.mjs",
     "secret:scan": "secretlint \"**/*\" \".env.example\"",
+    "screenshots:scan": "node scripts/scan-screenshots.mjs",
+    "demo:phase7": "node scripts/phase7-demo.mjs verify",
+    "demo:phase7:cleanup": "node scripts/phase7-demo.mjs cleanup",
     "smoke:phase3": "tsx --tsconfig apps/web/tsconfig.json apps/web/scripts/phase3-smoke-activate.ts",
     "smoke:phase4": "tsx --tsconfig apps/web/tsconfig.json apps/web/scripts/phase4-smoke.ts",
     "smoke:phase4:resume": "tsx --tsconfig apps/web/tsconfig.json apps/web/scripts/phase4-smoke-resume.ts",
@@ -42,7 +49,8 @@
     "test:integration": "pnpm --filter @client-onboarding/web test:integration",
     "pretypecheck": "pnpm db:generate",
     "typecheck": "pnpm --filter @client-onboarding/web typecheck",
-    "verify": "pnpm db:validate && pnpm n8n:validate && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm secret:scan"
+    "verify": "pnpm db:validate && pnpm n8n:validate && pnpm docs:links && pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm test:e2e && pnpm build && pnpm secret:scan && pnpm audit --prod --audit-level high && pnpm git:diff-check",
+    "verify:final": "node scripts/verify-final.mjs"
   },
   "devDependencies": {
     "@secretlint/secretlint-rule-preset-recommend": "13.0.4",

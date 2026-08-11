@@ -25,6 +25,6 @@ export function AuditTimeline({
       ))}
     </ol>
   ) : (
-    <p>No Phase 2 audit events have been recorded.</p>
+    <p>No audit events have been recorded.</p>
   );
 }

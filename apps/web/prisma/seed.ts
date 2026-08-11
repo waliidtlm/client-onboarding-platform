@@ -348,8 +348,13 @@ async function main(): Promise<void> {
   const environment = seedEnvironmentSchema.parse(process.env);
   const connectionString = environment.MIGRATION_DATABASE_URL ?? environment.DATABASE_URL;
 
-  if (!connectionString || new URL(connectionString).pathname !== "/onboarding_app") {
-    throw new Error("Demo seed must target onboarding_app");
+  const databaseName = connectionString ? new URL(connectionString).pathname : "";
+  const isNormalLocalDatabase = databaseName === "/onboarding_app";
+  const isExactPhase7Demo =
+    databaseName === "/onboarding_phase7_demo" &&
+    process.env.PHASE7_DEMO_FIXTURE_MARKER === "PHASE7_DEMO_FIXTURE_v1";
+  if (!connectionString || (!isNormalLocalDatabase && !isExactPhase7Demo)) {
+    throw new Error("Demo seed must target onboarding_app or the exact isolated Phase 7 database");
   }
 
   const client = new PrismaClient({

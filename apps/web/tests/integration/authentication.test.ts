@@ -4,6 +4,11 @@ import { getServerSession } from "next-auth";
 import { authorizeStaff } from "../../src/auth/options";
 import { Role } from "../../src/generated/prisma/client";
 import { createPrismaClient } from "../../src/lib/database";
+import {
+  consumeRateLimit,
+  rateLimitSubjectHash,
+  resetRateLimit,
+} from "../../src/application/client-access/rate-limit-service";
 
 vi.mock("next-auth", async (importOriginal) => {
   const original = await importOriginal<typeof import("next-auth")>();
@@ -76,5 +81,27 @@ describe("database-backed credentials authentication", () => {
       where: { id: user.id },
       data: { isActive: true },
     });
+  });
+
+  it("stores only hashed login subjects and safely resets the account window", async () => {
+    const account = `unknown-${crypto.randomUUID()}@northstar.test`;
+    const expectedHash = rateLimitSubjectHash("STAFF_LOGIN_ACCOUNT", account);
+    let result = { allowed: true, retryAfterSeconds: 0 };
+    for (let attempt = 0; attempt < 11; attempt += 1) {
+      result = await consumeRateLimit("STAFF_LOGIN_ACCOUNT", account, client);
+    }
+    expect(result.allowed).toBe(false);
+    const buckets = await client.publicRateLimitBucket.findMany({
+      where: { scope: "STAFF_LOGIN_ACCOUNT", subjectHash: expectedHash },
+    });
+    expect(buckets.length).toBeGreaterThan(0);
+    expect(JSON.stringify(buckets)).not.toContain(account);
+
+    await resetRateLimit("STAFF_LOGIN_ACCOUNT", account, client);
+    await expect(
+      client.publicRateLimitBucket.count({
+        where: { scope: "STAFF_LOGIN_ACCOUNT", subjectHash: expectedHash },
+      }),
+    ).resolves.toBe(0);
   });
 });

@@ -36,7 +36,11 @@ export async function prepareIntegrationDatabase(): Promise<void> {
     testDatabaseName,
     "TEST_MIGRATION_DATABASE_URL",
   );
-  requireDatabase(process.env.SHADOW_DATABASE_URL, "onboarding_shadow", "SHADOW_DATABASE_URL");
+  const shadowDatabaseName = process.env.SHADOW_DB_NAME ?? "onboarding_shadow";
+  if (!/^onboarding_shadow(?:_[a-z0-9_]+)?$/.test(shadowDatabaseName)) {
+    throw new Error("SHADOW_DB_NAME is outside the isolated shadow namespace");
+  }
+  requireDatabase(process.env.SHADOW_DATABASE_URL, shadowDatabaseName, "SHADOW_DATABASE_URL");
 
   if (testRuntimeUrl === testMigrationUrl) {
     throw new Error("Test runtime and migration credentials must be different");

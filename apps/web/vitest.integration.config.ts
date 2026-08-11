@@ -24,6 +24,8 @@ process.env.AUTOMATION_PHASE5_SERVICE_TOKEN ??= "integration-phase5-service-toke
 process.env.AUTOMATION_PHASE5_HMAC_SECRET ??= "integration-phase5-hmac-secret-00000000000";
 process.env.AUTOMATION_PHASE6_SERVICE_TOKEN ??= "integration-phase6-service-token-000000000";
 process.env.AUTOMATION_PHASE6_HMAC_SECRET ??= "integration-phase6-hmac-secret-00000000000";
+process.env.AUTOMATION_PHASE7_SERVICE_TOKEN ??= "integration-phase7-service-token-00000000000";
+process.env.AUTOMATION_PHASE7_HMAC_SECRET ??= "integration-phase7-hmac-secret-00000000000";
 process.env.NEXTAUTH_URL ??= "http://127.0.0.1:3100";
 process.env.TEST_STAFF_PASSWORD ??= "fictional-integration-staff-password-2026";
 

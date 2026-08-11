@@ -80,13 +80,16 @@ afterAll(async () => client.$disconnect());
 describe("Phase 2 commercial workflow", () => {
   it("creates an incomplete onboarding early, retries idempotently, then creates one new client", async () => {
     const submissionKey = randomUUID();
+    const clientSuffix = randomUUID();
+    const companyName = `Northwind Wellness Test ${clientSuffix}`;
+    const contactEmail = `nora-${clientSuffix}@northwind-wellness.test`;
     const first = await createOnboardingFromSalesHandoff(
       handoffInput({
         submissionKey,
         externalDealId: null,
         clientMode: "NEW",
         existingClientId: null,
-        newClientCompanyName: "Northwind Wellness Test",
+        newClientCompanyName: companyName,
         newClientContactName: null,
         newClientContactEmail: null,
       }),
@@ -104,7 +107,7 @@ describe("Phase 2 commercial workflow", () => {
       email: "sales@northstar.test",
       role: Role.SALES,
     });
-    expect(incompleteDetail?.client).toBe("Northwind Wellness Test");
+    expect(incompleteDetail?.client).toBe(companyName);
     expect(incompleteDetail?.servicePackage).toBe("Package not selected");
 
     const repeated = await createOnboardingFromSalesHandoff(
@@ -122,9 +125,9 @@ describe("Phase 2 commercial workflow", () => {
           externalDealId: completedExternalDealId,
           clientMode: "NEW",
           existingClientId: null,
-          newClientCompanyName: "Northwind Wellness Test",
+          newClientCompanyName: companyName,
           newClientContactName: "Nora North",
-          newClientContactEmail: "nora@northwind-wellness.test",
+          newClientContactEmail: contactEmail,
         }),
         onboardingId: first.value.onboardingId,
         expectedVersion: first.value.version,
@@ -139,9 +142,9 @@ describe("Phase 2 commercial workflow", () => {
         externalDealId: completedExternalDealId,
         clientMode: "NEW",
         existingClientId: null,
-        newClientCompanyName: "Northwind Wellness Test",
+        newClientCompanyName: companyName,
         newClientContactName: "Nora North",
-        newClientContactEmail: "nora@northwind-wellness.test",
+        newClientContactEmail: contactEmail,
       }),
       client,
     );
@@ -153,14 +156,12 @@ describe("Phase 2 commercial workflow", () => {
       where: { id: first.value.onboardingId },
       include: { client: true, activationInvoice: true, contracts: true },
     });
-    expect(stored.client?.companyName).toBe("Northwind Wellness Test");
+    expect(stored.client?.companyName).toBe(companyName);
     expect(stored.activationInvoice?.status).toBe("DRAFT");
     expect(stored.activationInvoice?.invoiceNumber).toBeNull();
     expect(stored.contracts).toHaveLength(1);
     expect(stored.contracts[0]?.status).toBe(ContractStatus.DRAFT);
-    expect(await client.client.count({ where: { companyName: "Northwind Wellness Test" } })).toBe(
-      1,
-    );
+    expect(await client.client.count({ where: { companyName } })).toBe(1);
   });
 
   it("selects an existing client and keeps the package snapshot stable", async () => {
@@ -318,7 +319,7 @@ describe("Phase 2 commercial workflow", () => {
         targetStatus: ContractStatus.SIGNED,
         revisionReason: null,
         signatureDeadline: null,
-        externalReference: "SIGNED-V1",
+        externalReference: `SIGNED-V1-${randomUUID()}`,
       },
       client,
     );

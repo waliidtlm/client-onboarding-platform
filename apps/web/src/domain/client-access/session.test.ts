@@ -40,6 +40,9 @@ describe("client session signatures", () => {
     expect(
       verifyClientSession(created.cookieValue, secret, new Date(now.getTime() + 11_000)),
     ).toBeNull();
-    expect(verifyClientSession(`${created.cookieValue.slice(0, -1)}A`, secret, now)).toBeNull();
+    const replacement = created.cookieValue.endsWith("A") ? "B" : "A";
+    expect(
+      verifyClientSession(`${created.cookieValue.slice(0, -1)}${replacement}`, secret, now),
+    ).toBeNull();
   });
 });

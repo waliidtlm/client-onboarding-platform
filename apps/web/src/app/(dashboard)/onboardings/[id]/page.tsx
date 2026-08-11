@@ -15,6 +15,7 @@ import { Role } from "@/generated/prisma/client";
 import { listActiveDeliveryUsers, loadPhase6Workspace } from "@/application/phase6/query-service";
 import { can, Permission, requirePermission } from "@/lib/auth/authorization";
 import {
+  getOnboardingAuditTimeline,
   getOnboardingDetail,
   getPhase5Detail,
   listActiveProjectManagers,
@@ -33,7 +34,10 @@ export default async function OnboardingDetailPage({
   const { success, error } = await searchParams;
   const staff = await requirePermission(Permission.ONBOARDING_READ, `/onboardings/${id}`);
   if (staff.role === Role.DELIVERY) {
-    const workspace = await loadPhase6Workspace(id, staff);
+    const [workspace, auditTimeline] = await Promise.all([
+      loadPhase6Workspace(id, staff),
+      getOnboardingAuditTimeline(id, staff),
+    ]);
     if (!workspace) notFound();
     return (
       <section>
@@ -43,15 +47,20 @@ export default async function OnboardingDetailPage({
         {success ? <p className="notice notice-success">{success}</p> : null}
         {error ? <p className="notice notice-error">{error}</p> : null}
         <Phase6Panel deliveryUsers={[]} role={staff.role} workspace={workspace} />
+        <article className="detail-card">
+          <h2>Audit timeline</h2>
+          <AuditTimeline events={auditTimeline} />
+        </article>
       </section>
     );
   }
-  const [onboarding, projectManagers, phase5] = await Promise.all([
+  const [onboarding, projectManagers, phase5, auditTimeline] = await Promise.all([
     getOnboardingDetail(id, staff),
     can(Permission.PROJECT_MANAGER_ASSIGN, staff.role)
       ? listActiveProjectManagers()
       : Promise.resolve([]),
     getPhase5Detail(id, staff),
+    getOnboardingAuditTimeline(id, staff),
   ]);
 
   if (!onboarding) notFound();
@@ -288,6 +297,11 @@ export default async function OnboardingDetailPage({
       {phase6 ? (
         <Phase6Panel deliveryUsers={deliveryUsers} role={staff.role} workspace={phase6} />
       ) : null}
+
+      <article className="detail-card">
+        <h2>Complete audit timeline</h2>
+        <AuditTimeline events={auditTimeline} />
+      </article>
 
       <article className="detail-card">
         <h2>Package configuration</h2>

@@ -5,6 +5,56 @@ import { validateHttpsUrl } from "@/domain/requirements/submission-validation";
 import { formatMoney, presentStoredStatus, type StoredStatus } from "@/lib/onboardings/presenter";
 import { calculateProvisioningReadiness } from "@/domain/provisioning/readiness";
 
+const DELIVERY_AUDIT_ACTIONS = [
+  "PROJECT_READY",
+  "DELIVERY_HANDOFF_READY",
+  "DELIVERY_HANDOFF_NOTIFICATION_SENT",
+  "DELIVERY_HANDOFF_REASSIGNED",
+  "ONBOARDING_COMPLETED",
+] as const;
+
+export async function getOnboardingAuditTimeline(
+  onboardingId: string,
+  staff: CurrentStaff,
+  database: PrismaClient = prisma,
+) {
+  const events = await database.auditEvent.findMany({
+    where: {
+      onboardingId,
+      ...(staff.role === "DELIVERY"
+        ? {
+            action: {
+              in: [...DELIVERY_AUDIT_ACTIONS],
+            },
+          }
+        : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+    select: {
+      id: true,
+      action: true,
+      entityType: true,
+      actorType: true,
+      createdAt: true,
+      actor: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+
+  return events.map((event) => ({
+    id: event.id,
+    action: event.action,
+    entityType: event.entityType,
+    actorType: event.actorType,
+    actorName: event.actor?.name ?? "System",
+    createdAt: event.createdAt.toISOString(),
+  }));
+}
+
 function serializeBaseOnboarding(
   onboarding: StoredStatus & {
     id: string;

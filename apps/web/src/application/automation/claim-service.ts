@@ -19,6 +19,7 @@ export async function claimAutomationEvent(
     "KICKOFF_INVITATION_REQUESTED",
     "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED",
     "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED",
+    "REMINDER_NOTIFICATION_REQUESTED",
   ],
 ): Promise<Result<AutomationClaimResult>> {
   return executeService(async () => {

@@ -55,6 +55,12 @@ export const serverEnvironmentSchema = z
     AUTOMATION_PHASE6_HMAC_SECRET: z
       .string()
       .min(32, "AUTOMATION_PHASE6_HMAC_SECRET must contain at least 32 characters"),
+    AUTOMATION_PHASE7_SERVICE_TOKEN: z
+      .string()
+      .min(32, "AUTOMATION_PHASE7_SERVICE_TOKEN must contain at least 32 characters"),
+    AUTOMATION_PHASE7_HMAC_SECRET: z
+      .string()
+      .min(32, "AUTOMATION_PHASE7_HMAC_SECRET must contain at least 32 characters"),
     PROVISIONING_TASK_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(10).default(3),
     AUTOMATION_SIGNATURE_MAX_AGE_SECONDS: z.coerce.number().int().min(30).max(900).default(300),
     AUTH_SECRET: z.string().min(32, "AUTH_SECRET must contain at least 32 characters"),
@@ -85,6 +91,7 @@ export const serverEnvironmentSchema = z
       ),
     LOG_LEVEL: z.enum(logLevels).default("info"),
     NEXTAUTH_URL: z.url(),
+    DEPLOYMENT_PROFILE: z.enum(["local", "production"]).default("local"),
   })
   .superRefine((environment, context) => {
     const distinct = (
@@ -131,6 +138,50 @@ export const serverEnvironmentSchema = z
       "AUTOMATION_PHASE6_HMAC_SECRET",
       "Phase 6 must not reuse the Phase 5 HMAC credential",
     );
+    for (const [value, other, message] of [
+      [
+        environment.AUTOMATION_PHASE7_SERVICE_TOKEN,
+        environment.AUTOMATION_SERVICE_TOKEN,
+        "Phase 7 must not reuse the Phase 4 service credential",
+      ],
+      [
+        environment.AUTOMATION_PHASE7_SERVICE_TOKEN,
+        environment.AUTOMATION_PHASE5_SERVICE_TOKEN,
+        "Phase 7 must not reuse the Phase 5 service credential",
+      ],
+      [
+        environment.AUTOMATION_PHASE7_SERVICE_TOKEN,
+        environment.AUTOMATION_PHASE6_SERVICE_TOKEN,
+        "Phase 7 must not reuse the Phase 6 service credential",
+      ],
+      [
+        environment.AUTOMATION_PHASE7_HMAC_SECRET,
+        environment.AUTOMATION_HMAC_SECRET,
+        "Phase 7 must not reuse the Phase 4 HMAC credential",
+      ],
+      [
+        environment.AUTOMATION_PHASE7_HMAC_SECRET,
+        environment.AUTOMATION_PHASE5_HMAC_SECRET,
+        "Phase 7 must not reuse the Phase 5 HMAC credential",
+      ],
+      [
+        environment.AUTOMATION_PHASE7_HMAC_SECRET,
+        environment.AUTOMATION_PHASE6_HMAC_SECRET,
+        "Phase 7 must not reuse the Phase 6 HMAC credential",
+      ],
+    ] as const) {
+      if (value === other) {
+        context.addIssue({
+          code: "custom",
+          path: [
+            message.includes("HMAC")
+              ? "AUTOMATION_PHASE7_HMAC_SECRET"
+              : "AUTOMATION_PHASE7_SERVICE_TOKEN",
+          ],
+          message,
+        });
+      }
+    }
     distinct(
       environment.PUBLIC_RATE_LIMIT_HMAC_SECRET,
       environment.CLIENT_SESSION_SECRET,
@@ -147,6 +198,29 @@ export const serverEnvironmentSchema = z
         path: ["PUBLIC_RATE_LIMIT_HMAC_SECRET"],
         message: "Rate limiting must not reuse a client access signing key",
       });
+    }
+    if (environment.DEPLOYMENT_PROFILE === "production") {
+      for (const [key, value] of [
+        ["APP_PUBLIC_ORIGIN", environment.APP_PUBLIC_ORIGIN],
+        ["CLIENT_ACCESS_PUBLIC_BASE_URL", environment.CLIENT_ACCESS_PUBLIC_BASE_URL],
+        ["NEXTAUTH_URL", environment.NEXTAUTH_URL],
+        ["OBJECT_STORAGE_BROWSER_ENDPOINT", environment.OBJECT_STORAGE_BROWSER_ENDPOINT],
+      ] as const) {
+        if (new URL(value).protocol !== "https:") {
+          context.addIssue({
+            code: "custom",
+            path: [key],
+            message: `${key} must use HTTPS in the production deployment profile`,
+          });
+        }
+      }
+      if (environment.TRUSTED_PROXY_HOPS < 1) {
+        context.addIssue({
+          code: "custom",
+          path: ["TRUSTED_PROXY_HOPS"],
+          message: "Production requires an explicitly configured trusted proxy",
+        });
+      }
     }
   });
 
@@ -167,6 +241,8 @@ export function parseServerEnvironment(
     AUTOMATION_PHASE5_HMAC_SECRET: source.AUTOMATION_PHASE5_HMAC_SECRET,
     AUTOMATION_PHASE6_SERVICE_TOKEN: source.AUTOMATION_PHASE6_SERVICE_TOKEN,
     AUTOMATION_PHASE6_HMAC_SECRET: source.AUTOMATION_PHASE6_HMAC_SECRET,
+    AUTOMATION_PHASE7_SERVICE_TOKEN: source.AUTOMATION_PHASE7_SERVICE_TOKEN,
+    AUTOMATION_PHASE7_HMAC_SECRET: source.AUTOMATION_PHASE7_HMAC_SECRET,
     PROVISIONING_TASK_MAX_ATTEMPTS: source.PROVISIONING_TASK_MAX_ATTEMPTS,
     AUTOMATION_SIGNATURE_MAX_AGE_SECONDS: source.AUTOMATION_SIGNATURE_MAX_AGE_SECONDS,
     AUTH_SECRET: source.AUTH_SECRET,
@@ -191,6 +267,7 @@ export function parseServerEnvironment(
     DATABASE_URL: source.DATABASE_URL,
     LOG_LEVEL: source.LOG_LEVEL,
     NEXTAUTH_URL: source.NEXTAUTH_URL,
+    DEPLOYMENT_PROFILE: source.DEPLOYMENT_PROFILE,
   });
 }
 

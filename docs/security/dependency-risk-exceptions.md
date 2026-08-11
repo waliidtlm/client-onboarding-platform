@@ -45,3 +45,5 @@ On Windows, run the equivalent command:
 ```powershell
 pnpm.cmd audit --prod --audit-level high
 ```
+
+Known development-tooling exception unchanged. Production dependency audit passed.

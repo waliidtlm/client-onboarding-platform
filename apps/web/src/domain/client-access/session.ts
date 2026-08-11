@@ -60,6 +60,7 @@ export function verifyClientSession(
   const supplied = Buffer.from(suppliedSignature!, "base64url");
   const expiresAt = new Date(Number(expiration) * 1000);
   if (
+    supplied.toString("base64url") !== suppliedSignature ||
     expected.length !== supplied.length ||
     !timingSafeEqual(expected, supplied) ||
     expiresAt <= now

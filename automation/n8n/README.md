@@ -1,6 +1,6 @@
-# Phase 4, Phase 5, and Phase 6 n8n workflows
+# Phase 4 through Phase 7 n8n workflows
 
-The five committed exports are deliberately inactive:
+The six committed exports are deliberately inactive:
 
 - `phase3-onboarding-activation-consumer.json` is retained for execution-history evidence. Do not
   delete it during Phase 4 verification.
@@ -15,6 +15,9 @@ The five committed exports are deliberately inactive:
   `CLIENT_REQUIREMENTS_COMPLETED`, `KICKOFF_INVITATION_REQUESTED`,
   `DELIVERY_HANDOFF_NOTIFICATION_REQUESTED`, and
   `PHASE6_CANCELLATION_NOTIFICATION_REQUESTED`.
+- `phase7-reminders-and-escalations.json` uses a fourth service identity. Every 15 minutes it asks
+  the application to evaluate policy, claims only `REMINDER_NOTIFICATION_REQUESTED`, and calls the
+  application-owned delivery endpoint.
 
 The application remains authoritative. The Phase 4 consumer follows typed instructions and calls
 run-bound application APIs. It does not connect to the application database or decide task
@@ -53,6 +56,10 @@ notification delivery use dedicated application endpoints. Meeting details, reci
 bodies, approved requirement content, and frozen handoff snapshots never enter n8n. The
 application owns SMTP delivery and uncertain-delivery state; n8n has no Phase 6 SMTP credential.
 
+The Phase 7 workflow contains no overdue thresholds, recipient rules, stop conditions, or message
+content. Those rules live in the application. Successful and failed execution-data persistence is
+disabled, so recipients and operational credentials are not retained in n8n execution history.
+
 ## Validate and import
 
 Validate the export contract:
@@ -68,6 +75,7 @@ docker compose --env-file .env exec n8n n8n import:workflow --input=/workflows/p
 docker compose --env-file .env exec n8n n8n import:workflow --input=/workflows/phase4-internal-onboarding-and-provisioning.json
 docker compose --env-file .env exec n8n n8n import:workflow --input=/workflows/phase5-client-access-email.json
 docker compose --env-file .env exec n8n n8n import:workflow --input=/workflows/phase6-kickoff-delivery-handoff.json
+docker compose --env-file .env exec n8n n8n import:workflow --input=/workflows/phase7-reminders-and-escalations.json
 ```
 
 In the local n8n editor, create an SMTP credential that targets `mailpit:1025`, with TLS disabled
@@ -85,15 +93,17 @@ Before activation:
 5. Inspect every pending `CLIENT_REQUIREMENTS_COMPLETED` event and prove its fixture and recipient
    are safe before Phase 6 activation.
 6. Activate **Internal Onboarding and Provisioning**, **Phase 5 Client Access Email**, and
-   **Phase 6 Kickoff and Delivery Handoff**. Their distinct server-side service identities cannot
-   claim each other's event types.
+   **Phase 6 Kickoff and Delivery Handoff**.
+7. Confirm all test and local recipients use `.test`, then activate **Phase 7 Reminders and
+   Escalations**. The four distinct server-side service identities cannot claim each other's event
+   types.
 
 The evidence gate is one active polling consumer per authorized service identity. An inactive
 retained Phase 3 export and its execution history are expected.
 
 ## Operational behavior
 
-- Poll interval: one minute while active.
+- Poll interval: one minute for event consumers; 15 minutes for Phase 7 reminder evaluation.
 - Lease: application-configured, five minutes by default.
 - Network timeout: 30 seconds, safely below the lease.
 - Work unit: one event per execution and one provider task per task event.

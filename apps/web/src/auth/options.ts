@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/database";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { logger } from "@/lib/logger";
+import { resetRateLimit } from "@/application/client-access/rate-limit-service";
 
 const credentialsSchema = z.object({
   email: z
@@ -45,6 +46,8 @@ export async function authorizeStaff(input: Record<"email" | "password", unknown
   if (!passwordMatches || !user.isActive) {
     return null;
   }
+
+  await resetRateLimit("STAFF_LOGIN_ACCOUNT", credentials.data.email);
 
   return {
     id: user.id,

@@ -23,10 +23,11 @@ export const claimAutomationSchema = z
           "KICKOFF_INVITATION_REQUESTED",
           "DELIVERY_HANDOFF_NOTIFICATION_REQUESTED",
           "PHASE6_CANCELLATION_NOTIFICATION_REQUESTED",
+          "REMINDER_NOTIFICATION_REQUESTED",
         ]),
       )
       .min(1)
-      .max(10)
+      .max(11)
       .refine((value) => new Set(value).size === value.length, "Event types must be unique"),
   })
   .strict();

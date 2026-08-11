@@ -9,6 +9,8 @@ const buildOnlyEnvironment = {
   AUTOMATION_PHASE5_SERVICE_TOKEN: "build-only-phase5-service-token-not-runtime",
   AUTOMATION_PHASE6_SERVICE_TOKEN: "build-only-phase6-service-token-not-runtime",
   AUTOMATION_PHASE6_HMAC_SECRET: "build-only-phase6-hmac-secret-not-runtime",
+  AUTOMATION_PHASE7_SERVICE_TOKEN: "build-only-phase7-service-token-not-runtime",
+  AUTOMATION_PHASE7_HMAC_SECRET: "build-only-phase7-hmac-secret-not-runtime",
   AUTOMATION_PHASE5_HMAC_SECRET: "build-only-phase5-hmac-secret-not-runtime",
   CLIENT_ACCESS_ACTIVE_SIGNING_KEY_VERSION: "1",
   CLIENT_ACCESS_SIGNING_KEYS: '{"1":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}',
@@ -25,6 +27,7 @@ const buildOnlyEnvironment = {
   SMTP_HOST: "127.0.0.1",
   SMTP_PORT: "1025",
   NEXTAUTH_URL: "http://127.0.0.1:3000",
+  DEPLOYMENT_PROFILE: "local",
 };
 
 const nextCli = fileURLToPath(import.meta.resolve("next/dist/bin/next"));

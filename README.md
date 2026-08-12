@@ -95,7 +95,8 @@ The required pull-request workflow validates:
 4. PostgreSQL integration tests and the applied migration chain;
 5. Chromium installation and Playwright application tests;
 6. n8n exports and documentation links;
-7. the production build, committed-secret scan, production dependency audit, and clean diff.
+7. the production build, current-tree and full-history secret scans, screenshot redaction and
+   metadata validation, production dependency audit, and clean diff.
 
 The accepted Phase 7 portfolio gate includes 180 unit/route tests, 52 PostgreSQL integration
 tests, and 17 Playwright scenarios. The isolated demo adds Mailpit, MinIO, n8n, lifecycle, retry,
@@ -161,6 +162,17 @@ docker/postgres/init/      Isolated PostgreSQL role/database bootstrap
 docs/                      Architecture, demo, security, deployment, and screenshots
 scripts/                   Repository verification and isolated demo orchestration
 ```
+
+## Publishing safely
+
+Do not ZIP or upload the working directory. Ignored `.env*` files and generated `.next` output can
+contain local credentials. Create a public archive from tracked Git content only:
+
+```bash
+git archive --format=zip --output=../client-onboarding-platform-public.zip HEAD
+```
+
+Before publishing, run `pnpm secret:scan`, `pnpm history:scan`, and `pnpm screenshots:scan`.
 
 ## Status and limitations
 

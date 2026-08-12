@@ -10,3 +10,4 @@
 **/test-results
 *.log
 docs/phase-learning-notes.local.md
+docs/security-audit.local.json

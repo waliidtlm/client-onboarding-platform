@@ -77,6 +77,9 @@ jobs:
       # Stable major tags receive vendor security patches; Dependabot monitors action updates.
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          # Required so the credential-history scan sees every reachable commit, not only HEAD.
+          fetch-depth: 0
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
@@ -154,6 +157,12 @@ jobs:
 
       - name: Scan for committed secrets
         run: pnpm secret:scan
+
+      - name: Scan Git history for credential patterns
+        run: pnpm history:scan
+
+      - name: Validate screenshot metadata and redaction
+        run: pnpm screenshots:scan
 
       - name: Audit production dependencies
         run: pnpm audit --prod --audit-level high

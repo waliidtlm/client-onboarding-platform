@@ -1,4 +1,4 @@
-FROM node:24.16.0-alpine3.23 AS base
+FROM node:26.8.1-alpine3.23 AS base
 
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
@@ -57,7 +57,7 @@ COPY . .
 
 CMD ["pnpm", "db:deploy"]
 
-FROM node:24.16.0-alpine3.23 AS runner
+FROM node:26.8.1-alpine3.23 AS runner
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

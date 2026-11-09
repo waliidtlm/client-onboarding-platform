@@ -53,11 +53,11 @@
     "verify:final": "node scripts/verify-final.mjs"
   },
   "devDependencies": {
-    "@secretlint/secretlint-rule-preset-recommend": "13.0.4",
+    "@secretlint/secretlint-rule-preset-recommend": "13.1.0",
     "dotenv": "17.4.2",
-    "prettier": "3.9.6",
-    "prisma": "7.9.1",
-    "secretlint": "13.0.4",
-    "tsx": "4.23.11"
+    "prettier": "3.9.10",
+    "prisma": "7.10.1",
+    "secretlint": "13.1.0",
+    "tsx": "4.23.15"
   }
 }
